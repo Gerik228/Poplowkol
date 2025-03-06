@@ -1,0 +1,68 @@
+Проблема в том, что элементы внутри iframe имеют target="_blank", что автоматически открывает ссылки в новой вкладке. Чтобы перенаправлять их в сам iframe, можно попробовать следующие решения:
+
+1. Использование base target="_self" в iframe
+
+Если у вас есть доступ к HTML-коду внутри iframe, можно добавить внутри него тег:
+
+<base target="_self">
+
+Это заставит все ссылки открываться в том же iframe.
+
+2. Перехват кликов через JavaScript
+
+Если у вас нет доступа к коду iframe (например, он загружается с Яндекс Дата Лэнс), можно попробовать управлять поведением ссылок через JavaScript в APEX:
+
+document.addEventListener("DOMContentLoaded", function () {
+    let iframe = document.querySelector("iframe");
+
+    if (iframe) {
+        iframe.onload = function () {
+            let iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+            iframeDoc.addEventListener("click", function (event) {
+                let target = event.target.closest("a[target='_blank']");
+                if (target) {
+                    event.preventDefault();
+                    iframe.contentWindow.location.href = target.href;
+                }
+            });
+        };
+    }
+});
+
+Этот код делает следующее:
+
+После загрузки страницы ищет iframe.
+
+После загрузки содержимого iframe перехватывает клики по ссылкам с target="_blank".
+
+Меняет поведение так, чтобы ссылка открывалась внутри iframe.
+
+
+3. Принудительная замена target="_blank"
+
+Можно также попробовать принудительно заменить атрибут target во всех ссылках внутри iframe:
+
+document.addEventListener("DOMContentLoaded", function () {
+    let iframe = document.querySelector("iframe");
+
+    if (iframe) {
+        iframe.onload = function () {
+            let iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+            let links = iframeDoc.querySelectorAll("a[target='_blank']");
+            
+            links.forEach(link => {
+                link.setAttribute("target", "_self");
+            });
+        };
+    }
+});
+
+Важно:
+
+Если iframe загружается с другого домена (например, *.yandex.ru), браузерные политики безопасности (Same-Origin Policy) могут заблокировать доступ к его содержимому через JavaScript. В таком случае единственный вариант — настройка параметров на стороне сервиса Яндекс Дата Лэнс (если это возможно).
+
+Можно также попробовать sandbox-атрибут для iframe, но это может сломать работу встроенного контента.
+
+
+Попробуйте эти варианты и напишите, если потребуется дополнительная помощь!
+

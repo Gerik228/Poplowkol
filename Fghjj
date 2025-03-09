@@ -1,1 +1,179 @@
-Ffgyhuuuutf
+Вот готовый код для адаптивной верстки с использованием HTML, CSS и JavaScript, повторяющий интерфейс с твоих изображений.
+
+
+---
+
+1. HTML (index.html)
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Портал аналитики</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+    <header>
+        <div class="logo">📊 Портал аналитики</div>
+        <nav>
+            <ul>
+                <li><a href="#">Главная</a></li>
+                <li><a href="#">В разработке</a></li>
+                <li><a href="#">Поиск</a></li>
+                <li><a href="#">Избранное</a></li>
+                <li><a href="#" id="user-icon">👤 akulich</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <section class="hero">
+            <h1>Добро пожаловать на Портал аналитики!</h1>
+            <div class="hero-content">
+                <div class="hero-text">
+                    <p>Для вашего удобства дашборды собраны в едином пространстве.</p>
+                    <button onclick="findDashboard()">Найти интересующий дашборд</button>
+                </div>
+            </div>
+        </section>
+
+        <section class="cards">
+            <div class="card"><h3>О портале</h3><p>Познакомиться с порталом аналитики</p></div>
+            <div class="card"><h3>Избранное</h3><p>Посмотреть сохраненные дашборды</p></div>
+            <div class="card"><h3>Статистика</h3><p>Узнать о портале в цифрах</p></div>
+            <div class="card"><h3>Обратная связь</h3><p>Запросить консультацию по дашборду</p></div>
+            <div class="card"><h3>Разработка</h3><p>Протестировать новые дашборды</p></div>
+        </section>
+    </main>
+
+    <footer>
+        <p>Release 1.0</p>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
+
+
+---
+
+2. CSS (styles.css)
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: Arial, sans-serif;
+}
+
+body {
+    background-color: #f8f8f8;
+}
+
+header {
+    background-color: #2d8f2d;
+    color: white;
+    padding: 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+nav ul {
+    list-style: none;
+    display: flex;
+}
+
+nav ul li {
+    margin: 0 15px;
+}
+
+nav ul li a {
+    color: white;
+    text-decoration: none;
+}
+
+.hero {
+    text-align: center;
+    padding: 40px 20px;
+    background: #e8f5e9;
+}
+
+.hero h1 {
+    margin-bottom: 15px;
+}
+
+.hero-content {
+    background: #4caf50;
+    padding: 20px;
+    display: inline-block;
+    color: white;
+    border-radius: 5px;
+}
+
+.hero button {
+    margin-top: 10px;
+    padding: 10px 15px;
+    border: none;
+    background: white;
+    color: #4caf50;
+    font-size: 16px;
+    cursor: pointer;
+    border-radius: 5px;
+}
+
+.hero button:hover {
+    background: #ddd;
+}
+
+.cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+    padding: 20px;
+}
+
+.card {
+    background: white;
+    padding: 20px;
+    box-shadow: 0px 0px 10px rgba(0,0,0,0.1);
+    border-radius: 5px;
+}
+
+footer {
+    text-align: center;
+    padding: 10px;
+    background: #333;
+    color: white;
+    margin-top: 20px;
+}
+
+
+---
+
+3. JavaScript (script.js)
+
+function findDashboard() {
+    alert("Функция поиска дашбордов в разработке!");
+}
+
+
+---
+
+Как запустить?
+
+1. Создай три файла: index.html, styles.css и script.js.
+
+
+2. Скопируй код в соответствующие файлы.
+
+
+3. Открой index.html в браузере.
+
+
+
+Эта верстка адаптивная и подходит для разных экранов. Если нужно что-то доработать – скажи!
+
+

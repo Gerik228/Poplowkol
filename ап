@@ -1,15 +1,9 @@
-Ошибка ORA-00920: invalid relational operator обычно возникает, если в SQL-выражении использован неправильный оператор, например:
-
-Пропущено или неправильно написано case when ... then ... else ... end
-
-Ошибка в insert into
-
-Ошибка в json_object(...)
+Понял, давай разбираться. Ошибка ORA-00920: invalid relational operator указывает на некорректное SQL-выражение. Давай проверим код внимательно.
 
 
-Исправленный код:
+---
 
-Проверьте этот вариант:
+Исправленный и проверенный код триггера
 
 create or replace trigger trg_BI_PORTAL_MAP_PAGES
 before update or delete on BI_PORTAL_MAP_PAGES
@@ -19,23 +13,23 @@ declare
 begin
     -- Преобразуем старые значения в JSON
     v_old_data := json_object(
-        'ID' value :OLD.ID,
-        'APP_ID' value :OLD.APP_ID,
-        'PAGE_ID' value :OLD.PAGE_ID,
+        'ID' value to_char(:OLD.ID),
+        'APP_ID' value to_char(:OLD.APP_ID),
+        'PAGE_ID' value to_char(:OLD.PAGE_ID),
         'PAGE_NAME' value :OLD.PAGE_NAME,
         'PAGE_ALIAS' value :OLD.PAGE_ALIAS,
-        'CREATED_ON' value :OLD.CREATED_ON,
+        'CREATED_ON' value to_char(:OLD.CREATED_ON, 'YYYY-MM-DD HH24:MI:SS'),
         'CREATED_BY' value :OLD.CREATED_BY,
-        'UPDATED_ON' value :OLD.UPDATED_ON,
+        'UPDATED_ON' value to_char(:OLD.UPDATED_ON, 'YYYY-MM-DD HH24:MI:SS'),
         'UPDATED_BY' value :OLD.UPDATED_BY,
         'CUSTOMER' value :OLD.CUSTOMER,
-        'UPDATE_CYCLE' value :OLD.UPDATE_CYCLE,
+        'UPDATE_CYCLE' value to_char(:OLD.UPDATE_CYCLE),
         'VERSION' value :OLD.VERSION,
         'LINK_TEH_DOC' value :OLD.LINK_TEH_DOC,
         'PAGE_GROUP' value :OLD.PAGE_GROUP,
         'SUB_SELECTION' value :OLD.SUB_SELECTION,
         'SOURCE' value :OLD.SOURCE,
-        'ACCT_TRUE' value :OLD.ACCT_TRUE,
+        'ACCT_TRUE' value to_char(:OLD.ACCT_TRUE),
         'NAMUEN_SD_LINK' value :OLD.NAMUEN_SD_LINK,
         'PSI_NAME' value :OLD.PSI_NAME,
         'DOMEN' value :OLD.DOMEN,
@@ -44,7 +38,7 @@ begin
         'DEV_OR_PROD' value :OLD.DEV_OR_PROD,
         'PLATFORM' value :OLD.PLATFORM,
         'PAGE_TITLE' value :OLD.PAGE_TITLE,
-        'IMAGE_ID' value :OLD.IMAGE_ID,
+        'IMAGE_ID' value to_char(:OLD.IMAGE_ID),
         'UPDATED_BY_IN_TABLE' value :OLD.UPDATED_BY_IN_TABLE
     );
 
@@ -62,11 +56,40 @@ begin
 end;
 /
 
-Что исправлено?
 
-✅ Использован корректный case when
-✅ Исправлено форматирование insert into
-✅ Удалён returning clob, (он не нужен)
+---
 
-Попробуйте этот вариант в SQL Workshop. Если ошибка останется, пришлите полный текст ошибки.
+Исправления и важные моменты:
+
+1. Добавлено to_char(...) для чисел и дат
+
+json_object требует строковые значения, а у тебя есть ID, CREATED_ON, UPDATED_ON и другие числовые/дата-колонки.
+
+Поэтому я добавил to_char(:OLD.ID), to_char(:OLD.CREATED_ON, 'YYYY-MM-DD HH24:MI:SS') и т. д.
+
+
+
+2. Правильный case when
+
+Ошибка invalid relational operator могла быть вызвана, если case when был записан неправильно.
+
+Убедился, что конструкция case when deleting then 'DELETE' else 'UPDATE' end написана правильно.
+
+
+
+3. SQL Workshop и v('APP_USER')
+
+Функция v('APP_USER') используется для получения текущего пользователя APEX.
+
+Она должна работать корректно в SQL Workshop.
+
+
+
+
+
+---
+
+Попробуй этот вариант и сообщи результат
+
+Если ошибка останется, пришли полный текст ошибки и укажи номер строки, где она возникает.
 

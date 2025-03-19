@@ -1,0 +1,93 @@
+В вашем коде есть несколько потенциальных проблем, которые могут привести к ошибкам или некорректому поведению:
+
+1. Отсутствие разделителя ключей JSON
+В PL/SQL при использовании json_object() ключи и значения должны разделяться KEY:
+
+json_object(KEY 'ID' VALUE to_char(:OLD.ID), ...)
+
+В вашем коде используется ID' value вместо KEY 'ID' VALUE.
+
+
+2. Форматирование дат
+В PL/SQL to_char(:OLD.CREATED_ON, 'YYYY-MM-DD HH24:MI:SS') работает правильно, но если :OLD.CREATED_ON может быть NULL, то это приведет к ошибке. Лучше использовать NVL:
+
+NVL(to_char(:OLD.CREATED_ON, 'YYYY-MM-DD HH24:MI:SS'), 'NULL')
+
+
+3. Вставка в лог таблицу
+В INSERT INTO BI_PORTAL_MAP_PAGES_LOG поле operation формируется через case, но DELETE и UPDATE неявно конвертируются в строковые литералы. Лучше сделать так:
+
+case
+    when deleting then 'DELETE'
+    else 'UPDATE'
+end
+
+без лишних кавычек.
+
+
+4. Использование v_old_data clob
+Переменная v_old_data не инициализирована перед json_object(). Если используется CLOB, следует использовать to_clob():
+
+v_old_data := to_clob(json_object(...));
+
+
+5. Отсутствие :NEW в триггере BEFORE UPDATE
+Если триггер BEFORE UPDATE OR DELETE, а UPDATE не логируется с новыми значениями :NEW, можно потерять важные данные. Возможно, вам стоит добавить логирование :NEW.
+
+
+
+Исправленный код:
+
+create or replace trigger TRIGGER_BI_PORTAL_MAP_PAGES
+before update or delete on BI_PORTAL_MAP_PAGES
+for each row
+declare
+    v_old_data clob;
+begin
+    -- Преобразуем старые значения в JSON
+    v_old_data := json_object(
+        KEY 'ID' VALUE to_char(:OLD.ID),
+        KEY 'APP_ID' VALUE to_char(:OLD.APP_ID),
+        KEY 'PAGE_ID' VALUE to_char(:OLD.PAGE_ID),
+        KEY 'PAGE_NAME' VALUE :OLD.PAGE_NAME,
+        KEY 'PAGE_ALIAS' VALUE :OLD.PAGE_ALIAS,
+        KEY 'CREATED_ON' VALUE NVL(to_char(:OLD.CREATED_ON, 'YYYY-MM-DD HH24:MI:SS'), 'NULL'),
+        KEY 'CREATED_BY' VALUE :OLD.CREATED_BY,
+        KEY 'UPDATED_ON' VALUE NVL(to_char(:OLD.UPDATED_ON, 'YYYY-MM-DD HH24:MI:SS'), 'NULL'),
+        KEY 'UPDATED_BY' VALUE :OLD.UPDATED_BY,
+        KEY 'CUSTOMER' VALUE :OLD.CUSTOMER,
+        KEY 'UPDATE_CYCLE' VALUE NVL(to_char(:OLD.UPDATE_CYCLE), 'NULL'),
+        KEY 'VERSION' VALUE :OLD.VERSION,
+        KEY 'DISCRIPTION' VALUE :OLD.DISCRIPTION,
+        KEY 'LINK_TEH_DOC' VALUE :OLD.LINK_TEH_DOC,
+        KEY 'PAGE_GROUP' VALUE :OLD.PAGE_GROUP,
+        KEY 'SUB_SELECTION' VALUE :OLD.SUB_SELECTION,
+        KEY 'SOURCE' VALUE :OLD.SOURCE,
+        KEY 'ACCT_TRUE' VALUE NVL(to_char(:OLD.ACCT_TRUE), 'NULL'),
+        KEY 'NAUMEN_SD_LNK' VALUE :OLD.NAUMEN_SD_LNK,
+        KEY 'PST_NAME' VALUE :OLD.PST_NAME,
+        KEY 'DOMEN' VALUE :OLD.DOMEN,
+        KEY 'IMG' VALUE :OLD.IMG,
+        KEY 'ACCT' VALUE NVL(to_char(:OLD.ACCT), 'NULL'),
+        KEY 'DEV_OR_PROD' VALUE NVL(to_char(:OLD.DEV_OR_PROD), 'NULL'),
+        KEY 'PLATFORM' VALUE :OLD.PLATFORM,
+        KEY 'PAGE_TITLE' VALUE :OLD.PAGE_TITLE,
+        KEY 'IMAGE_ID' VALUE NVL(to_char(:OLD.IMAGE_ID), 'NULL'),
+        KEY 'UPDATED_BY_IN_TABLE' VALUE :OLD.UPDATED_BY_IN_TABLE
+    ) returning clob into v_old_data;
+
+    -- Вставляем запись в журнал
+    insert into BI_PORTAL_MAP_PAGES_LOG (table_name, operation, changed_by, old_data)
+    values (
+        'BI_PORTAL_MAP_PAGES',
+        case
+            when deleting then 'DELETE'
+            else 'UPDATE'
+        end,
+        'APP_USER',
+        v_old_data
+    );
+end;
+
+Этот код исправляет формат JSON, предотвращает возможные ошибки с NULL, инициализирует CLOB и корректно вставляет данные в журнал.
+

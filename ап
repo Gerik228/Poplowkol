@@ -1,88 +1,60 @@
-Добавление кнопки в тулбар интерактивного грида (IG), которая открывает модальное окно
+Для логирования изменений (обновлений и удалений) в таблице в Oracle APEX можно использовать триггеры. Вот пошаговое решение:
 
-В интерактивном гриде (IG) нет встроенного механизма для добавления кнопок в тулбар, но это можно сделать через динамическое действие и JavaScript.
+1. Создать таблицу-журнал
 
+Создадим таблицу, куда будут записываться все изменения.
 
----
+create table audit_log (
+    id number generated always as identity primary key,
+    table_name varchar2(100),
+    action_type varchar2(10), -- 'UPDATE' или 'DELETE'
+    record_id number, -- ID измененной/удаленной строки
+    old_data clob, -- JSON со старыми данными
+    changed_by varchar2(100), -- Пользователь APEX
+    changed_at timestamp default systimestamp
+);
 
-1. Добавляем кнопку в тулбар IG
+2. Создать триггер для логирования
 
-1. Откройте страницу с интерактивным гридом.
+Триггер будет записывать старые данные перед изменением или удалением.
 
+create or replace trigger trg_audit_my_table
+before update or delete on my_table
+for each row
+declare
+    v_old_data clob;
+begin
+    -- Формируем JSON из старых данных
+    v_old_data := json_object(
+        'column1' value :old.column1,
+        'column2' value :old.column2,
+        'column3' value :old.column3
+    ) returning clob;
 
-2. Перейдите в "Атрибуты" грида → Найдите секцию "Toolbar" (Панель инструментов).
+    -- Вставляем запись в лог
+    insert into audit_log (table_name, action_type, record_id, old_data, changed_by)
+    values ('MY_TABLE', case when deleting then 'DELETE' else 'UPDATE' end, :old.id, v_old_data, sys_context('APEX$SESSION', 'APP_USER'));
+end;
+/
 
+Как это работает?
 
-3. В поле "Статическая ID" укажите, например:
-
-my_ig
-
-
-4. Перейдите в Динамические действия → Создать новое.
-
-
-5. В "Событии" выберите → Страница загружена.
-
-
-6. Добавьте действие → Выполнить JavaScript и вставьте код:
-
-
-
-function addToolbarButton() {
-    let toolbar$ = $("#my_ig_toolbar"); // Получаем тулбар IG
-    if (!toolbar$.length) return;
-
-    // Проверяем, нет ли уже кнопки (чтобы не дублировать)
-    if ($("#my_custom_btn").length) return;
-
-    // Создаём кнопку
-    let buttonHtml = '<button id="my_custom_btn" class="t-Button t-Button--hot">Добавить</button>';
-    
-    // Вставляем кнопку в тулбар (например, после поиска)
-    toolbar$.find(".a-Toolbar-group").first().append(buttonHtml);
-
-    // Назначаем обработчик клика
-    $("#my_custom_btn").on("click", function() {
-        apex.event.trigger(document, "open_modal");
-    });
-}
-
-// Добавляем кнопку после загрузки тулбара
-setTimeout(addToolbarButton, 500);
+1. При UPDATE: перед обновлением записывается старая версия строки.
 
 
----
-
-2. Создаём модальное окно
-
-1. Создайте новую страницу → Тип "Модальное окно".
+2. При DELETE: перед удалением сохраняется удаленная строка.
 
 
-2. Запомните номер страницы, например 12.
+3. Используется JSON для хранения данных — это удобно для последующего анализа.
 
 
-3. Добавьте динамическое действие, которое откроет это окно:
-
-Событие: open_modal
-
-Действие: Открыть модальное окно
-
-Целевая страница: 12
+4. Фиксируется пользователь через sys_context('APEX$SESSION', 'APP_USER').
 
 
 
+Дополнительно: Просмотр логов в APEX
 
+В APEX можно создать Interactive Report на основе таблицы AUDIT_LOG, чтобы отслеживать изменения.
 
----
-
-3. Тестирование
-
-Теперь при загрузке страницы в тулбаре IG появится кнопка "Добавить", а при нажатии будет открываться модальное окно.
-
-Если кнопка не появилась, проверьте:
-✔️ Установили Static ID = my_ig в настройках IG.
-✔️ Включён jQuery в APEX (он используется в коде).
-✔️ В консоли браузера (F12 → Console) нет ошибок.
-
-Если что-то не работает – напишите, разберёмся!
+Этот метод гибкий и не требует правок в APEX-приложении. Подойдет?
 

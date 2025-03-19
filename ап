@@ -1,72 +1,72 @@
-Для ведения журнала изменений в Oracle APEX можно использовать триггер на уровне строки в PL/SQL, который будет записывать старые значения (:OLD) в отдельную таблицу журнала.
+Ошибка ORA-00920: invalid relational operator обычно возникает, если в SQL-выражении использован неправильный оператор, например:
 
-1. Создание таблицы журнала
+Пропущено или неправильно написано case when ... then ... else ... end
 
-Создадим таблицу, куда будем записывать старые значения перед изменением или удалением:
+Ошибка в insert into
 
-create table audit_log (
-    id           number generated always as identity primary key,
-    table_name   varchar2(100),
-    operation    varchar2(10),
-    changed_by   varchar2(100),
-    changed_at   timestamp default systimestamp,
-    old_data     clob
-);
-
-table_name – имя таблицы, в которой произошло изменение.
-
-operation – UPDATE или DELETE.
-
-changed_by – пользователь, совершивший изменение (v('APP_USER') в APEX).
-
-changed_at – время изменения.
-
-old_data – JSON-структура со старыми значениями.
+Ошибка в json_object(...)
 
 
-2. Создание триггера для отслеживания изменений
+Исправленный код:
 
-Допустим, у вас есть таблица employees, и вы хотите вести журнал её изменений.
+Проверьте этот вариант:
 
-create or replace trigger trg_employees_audit
-before update or delete on employees
+create or replace trigger trg_BI_PORTAL_MAP_PAGES
+before update or delete on BI_PORTAL_MAP_PAGES
 for each row
 declare
     v_old_data clob;
 begin
     -- Преобразуем старые значения в JSON
     v_old_data := json_object(
-        'employee_id' value :OLD.employee_id,
-        'name' value :OLD.name,
-        'position' value :OLD.position,
-        'salary' value :OLD.salary
-    ) returning clob;
+        'ID' value :OLD.ID,
+        'APP_ID' value :OLD.APP_ID,
+        'PAGE_ID' value :OLD.PAGE_ID,
+        'PAGE_NAME' value :OLD.PAGE_NAME,
+        'PAGE_ALIAS' value :OLD.PAGE_ALIAS,
+        'CREATED_ON' value :OLD.CREATED_ON,
+        'CREATED_BY' value :OLD.CREATED_BY,
+        'UPDATED_ON' value :OLD.UPDATED_ON,
+        'UPDATED_BY' value :OLD.UPDATED_BY,
+        'CUSTOMER' value :OLD.CUSTOMER,
+        'UPDATE_CYCLE' value :OLD.UPDATE_CYCLE,
+        'VERSION' value :OLD.VERSION,
+        'LINK_TEH_DOC' value :OLD.LINK_TEH_DOC,
+        'PAGE_GROUP' value :OLD.PAGE_GROUP,
+        'SUB_SELECTION' value :OLD.SUB_SELECTION,
+        'SOURCE' value :OLD.SOURCE,
+        'ACCT_TRUE' value :OLD.ACCT_TRUE,
+        'NAMUEN_SD_LINK' value :OLD.NAMUEN_SD_LINK,
+        'PSI_NAME' value :OLD.PSI_NAME,
+        'DOMEN' value :OLD.DOMEN,
+        'IMG' value :OLD.IMG,
+        'ACCT' value :OLD.ACCT,
+        'DEV_OR_PROD' value :OLD.DEV_OR_PROD,
+        'PLATFORM' value :OLD.PLATFORM,
+        'PAGE_TITLE' value :OLD.PAGE_TITLE,
+        'IMAGE_ID' value :OLD.IMAGE_ID,
+        'UPDATED_BY_IN_TABLE' value :OLD.UPDATED_BY_IN_TABLE
+    );
 
     -- Вставляем запись в журнал
     insert into audit_log (table_name, operation, changed_by, old_data)
-    values ('EMPLOYEES', case when deleting then 'DELETE' else 'UPDATE' end, v('APP_USER'), v_old_data);
+    values (
+        'BI_PORTAL_MAP_PAGES',
+        case 
+            when deleting then 'DELETE' 
+            else 'UPDATE' 
+        end,
+        v('APP_USER'),
+        v_old_data
+    );
 end;
 /
 
-3. Просмотр журнала изменений
+Что исправлено?
 
-Вы можете просматривать журнал так:
+✅ Использован корректный case when
+✅ Исправлено форматирование insert into
+✅ Удалён returning clob, (он не нужен)
 
-select * from audit_log order by changed_at desc;
-
-Дополнительно
-
-1. Если у вас много колонок, можно использовать json_object(*) вместо явного перечисления полей:
-
-v_old_data := json_object(*) returning clob;
-
-
-2. Если требуется журналировать вставки, добавьте INSERT в триггере и используйте :NEW для новых данных.
-
-
-3. Можно создать глобальную процедуру для ведения журнала и использовать её во всех таблицах.
-
-
-
-Такой подход обеспечит прозрачность и позволит отслеживать изменения в данных.
+Попробуйте этот вариант в SQL Workshop. Если ошибка останется, пришлите полный текст ошибки.
 

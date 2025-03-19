@@ -2,6 +2,47 @@ create or replace trigger TRIGGER_BI_PORTAL_MAP_PAGES
 before update or delete on BI_PORTAL_MAP_PAGES
 for each row
 declare
+    v_operation varchar2(10);
+begin
+    -- Определяем тип операции (UPDATE или DELETE)
+    if deleting then
+        v_operation := 'DELETE';
+    else
+        v_operation := 'UPDATE';
+    end if;
+
+    -- Вставляем старые значения в лог-таблицу
+    insert into BI_PORTAL_MAP_PAGES_LOG (
+        table_name, operation, changed_by,
+        ID, APP_ID, PAGE_ID, PAGE_NAME, PAGE_ALIAS, 
+        CREATED_ON, CREATED_BY, UPDATED_ON, UPDATED_BY, 
+        CUSTOMER, UPDATE_CYCLE, VERSION, DISCRIPTION, 
+        LINK_TEH_DOC, PAGE_GROUP, SUB_SELECTION, SOURCE, 
+        ACCT_TRUE, NAUMEN_SD_LNK, PST_NAME, DOMEN, IMG, 
+        ACCT, DEV_OR_PROD, PLATFORM, PAGE_TITLE, IMAGE_ID, 
+        UPDATED_BY_IN_TABLE
+    ) values (
+        'BI_PORTAL_MAP_PAGES',
+        v_operation,
+        'APP_USER',
+        :OLD.ID, :OLD.APP_ID, :OLD.PAGE_ID, :OLD.PAGE_NAME, :OLD.PAGE_ALIAS, 
+        :OLD.CREATED_ON, :OLD.CREATED_BY, :OLD.UPDATED_ON, :OLD.UPDATED_BY, 
+        :OLD.CUSTOMER, :OLD.UPDATE_CYCLE, :OLD.VERSION, :OLD.DISCRIPTION, 
+        :OLD.LINK_TEH_DOC, :OLD.PAGE_GROUP, :OLD.SUB_SELECTION, :OLD.SOURCE, 
+        :OLD.ACCT_TRUE, :OLD.NAUMEN_SD_LNK, :OLD.PST_NAME, :OLD.DOMEN, :OLD.IMG, 
+        :OLD.ACCT, :OLD.DEV_OR_PROD, :OLD.PLATFORM, :OLD.PAGE_TITLE, :OLD.IMAGE_ID, 
+        :OLD.UPDATED_BY_IN_TABLE
+    );
+end;
+/
+
+
+
+
+create or replace trigger TRIGGER_BI_PORTAL_MAP_PAGES
+before update or delete on BI_PORTAL_MAP_PAGES
+for each row
+declare
     v_old_data clob;
     v_json json_object_t;
     v_operation varchar2(10);

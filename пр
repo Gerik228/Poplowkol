@@ -4,7 +4,15 @@ for each row
 declare
     v_old_data clob;
     v_json json_object_t;
+    v_operation varchar2(10);
 begin
+    -- Определяем тип операции
+    if deleting then
+        v_operation := 'DELETE';
+    else
+        v_operation := 'UPDATE';
+    end if;
+
     -- Создаем JSON объект
     v_json := json_object_t();
     
@@ -45,10 +53,7 @@ begin
     insert into BI_PORTAL_MAP_PAGES_LOG (table_name, operation, changed_by, old_data)
     values (
         'BI_PORTAL_MAP_PAGES',
-        case 
-            when deleting then 'DELETE' 
-            else 'UPDATE' 
-        end,
+        v_operation,
         'APP_USER',
         v_old_data
     );

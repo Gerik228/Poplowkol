@@ -1,60 +1,72 @@
-Для логирования изменений (обновлений и удалений) в таблице в Oracle APEX можно использовать триггеры. Вот пошаговое решение:
+Для ведения журнала изменений в Oracle APEX можно использовать триггер на уровне строки в PL/SQL, который будет записывать старые значения (:OLD) в отдельную таблицу журнала.
 
-1. Создать таблицу-журнал
+1. Создание таблицы журнала
 
-Создадим таблицу, куда будут записываться все изменения.
+Создадим таблицу, куда будем записывать старые значения перед изменением или удалением:
 
 create table audit_log (
-    id number generated always as identity primary key,
-    table_name varchar2(100),
-    action_type varchar2(10), -- 'UPDATE' или 'DELETE'
-    record_id number, -- ID измененной/удаленной строки
-    old_data clob, -- JSON со старыми данными
-    changed_by varchar2(100), -- Пользователь APEX
-    changed_at timestamp default systimestamp
+    id           number generated always as identity primary key,
+    table_name   varchar2(100),
+    operation    varchar2(10),
+    changed_by   varchar2(100),
+    changed_at   timestamp default systimestamp,
+    old_data     clob
 );
 
-2. Создать триггер для логирования
+table_name – имя таблицы, в которой произошло изменение.
 
-Триггер будет записывать старые данные перед изменением или удалением.
+operation – UPDATE или DELETE.
 
-create or replace trigger trg_audit_my_table
-before update or delete on my_table
+changed_by – пользователь, совершивший изменение (v('APP_USER') в APEX).
+
+changed_at – время изменения.
+
+old_data – JSON-структура со старыми значениями.
+
+
+2. Создание триггера для отслеживания изменений
+
+Допустим, у вас есть таблица employees, и вы хотите вести журнал её изменений.
+
+create or replace trigger trg_employees_audit
+before update or delete on employees
 for each row
 declare
     v_old_data clob;
 begin
-    -- Формируем JSON из старых данных
+    -- Преобразуем старые значения в JSON
     v_old_data := json_object(
-        'column1' value :old.column1,
-        'column2' value :old.column2,
-        'column3' value :old.column3
+        'employee_id' value :OLD.employee_id,
+        'name' value :OLD.name,
+        'position' value :OLD.position,
+        'salary' value :OLD.salary
     ) returning clob;
 
-    -- Вставляем запись в лог
-    insert into audit_log (table_name, action_type, record_id, old_data, changed_by)
-    values ('MY_TABLE', case when deleting then 'DELETE' else 'UPDATE' end, :old.id, v_old_data, sys_context('APEX$SESSION', 'APP_USER'));
+    -- Вставляем запись в журнал
+    insert into audit_log (table_name, operation, changed_by, old_data)
+    values ('EMPLOYEES', case when deleting then 'DELETE' else 'UPDATE' end, v('APP_USER'), v_old_data);
 end;
 /
 
-Как это работает?
+3. Просмотр журнала изменений
 
-1. При UPDATE: перед обновлением записывается старая версия строки.
+Вы можете просматривать журнал так:
 
+select * from audit_log order by changed_at desc;
 
-2. При DELETE: перед удалением сохраняется удаленная строка.
+Дополнительно
 
+1. Если у вас много колонок, можно использовать json_object(*) вместо явного перечисления полей:
 
-3. Используется JSON для хранения данных — это удобно для последующего анализа.
-
-
-4. Фиксируется пользователь через sys_context('APEX$SESSION', 'APP_USER').
-
+v_old_data := json_object(*) returning clob;
 
 
-Дополнительно: Просмотр логов в APEX
+2. Если требуется журналировать вставки, добавьте INSERT в триггере и используйте :NEW для новых данных.
 
-В APEX можно создать Interactive Report на основе таблицы AUDIT_LOG, чтобы отслеживать изменения.
 
-Этот метод гибкий и не требует правок в APEX-приложении. Подойдет?
+3. Можно создать глобальную процедуру для ведения журнала и использовать её во всех таблицах.
+
+
+
+Такой подход обеспечит прозрачность и позволит отслеживать изменения в данных.
 

@@ -101,5 +101,94 @@ begin
     );
   else
     -- Ошибка: возврат на ту же страницу с сообщением
-    apex_util.set_session_state('P9999_MESSAGE', 'Неверный логин или
+    apex_util.set_session_state('P9999_MESSAGE', 'Неверный логин или пароль');
+    apex_util.redirect_url('f?p=&APP_ID.:9999');
+  end if;
+end;
+
+
+---
+
+4. Измени Authentication Scheme в APEX
+
+> Shared Components → Authentication Schemes → Create → From Scratch
+
+
+
+Название: LDAP Custom
+
+Scheme Type: Custom
+
+Login Processing Page: 9999
+
+Post-Login URL: f?p=&APP_ID.:1:
+
+
+Нажми "Make Current" — чтобы включить эту схему.
+
+
+---
+
+5. (Опционально) Добавь форму логина
+
+Если хочешь всё же оставить форму:
+
+На странице 9999 создай Text Field → P9999_USERNAME
+
+Password field → P9999_PASSWORD
+
+Submit button
+
+При нажатии кнопки вызывается твой процесс
+
+
+
+---
+
+6. (Дополнительно) Сделай авто-вход через cookie
+
+Установи cookie после успешного входа:
+
+owa_util.mime_header('text/html', FALSE);
+htp.p('Set-Cookie: SSO_USER=' || :P9999_USERNAME || '; path=/;');
+
+На будущих посещениях — создай страницу (например, 9998) с процессом:
+
+declare
+  v_username varchar2(100);
+begin
+  v_username := owa_util.get_cgi_env('HTTP_COOKIE');
+
+  if instr(v_username, 'SSO_USER=') > 0 then
+    v_username := regexp_substr(v_username, 'SSO_USER=([^;]+)', 1, 1, NULL, 1);
+
+    apex_authentication.login(
+      p_username => v_username,
+      p_password => null,
+      p_app_page => '1'
+    );
+  else
+    apex_util.redirect_url('f?p=&APP_ID.:9999');
+  end if;
+end;
+
+
+---
+
+Как протестировать:
+
+1. Перейди по ссылке:
+f?p=100:9999:::::P9999_USERNAME,P9999_PASSWORD:ivanov,MyPassword123
+
+
+2. Если логин и пароль валидны — APEX создаст сессию и отправит на страницу 1.
+
+
+
+
+---
+
+Если хочешь использовать авто-вход по токену, Windows логину, или через SAML — можно и это. Но твой текущий подход уже мощный.
+
+Хочешь — сделаю тебе export-шаблон страницы 9999?
 

@@ -1,110 +1,99 @@
-Отлично! Ты используешь PL/SQL-авторизацию через LDAP (Active Directory) — это значит, что ты уже умеешь проверять логин/пароль напрямую из базы через DBMS_LDAP. Это отличная база для реализации SSO-подобной авторизации в APEX.
-
-Теперь покажу тебе пошагово, как интегрировать это с APEX так, чтобы пользователь автоматически попадал в приложение без логин-страницы, если уже известен логин и пароль.
+Отлично! Сейчас дам тебе подробную пошаговую инструкцию, как реализовать SSO-авторизацию в Oracle APEX через LDAP (AD) с использованием твоей функции check_ldap_auth. Эта реализация будет работать без стандартной страницы входа, автоматически логинивая пользователя при успешной проверке.
 
 
 ---
 
-Что ты уже имеешь:
+Общая идея
 
-Функция check_ldap_auth(p_username, p_password) возвращает TRUE или FALSE.
-
-Ты вызываешь её из PL/SQL и получаешь результат.
-
-У тебя есть APEX-приложение, куда нужно логинить пользователей автоматически после проверки.
+1. Пользователь переходит по ссылке на специальную страницу APEX (например, /f?p=100:9999).
 
 
+2. Эта страница получает логин/пароль (например, через P9999_USERNAME и P9999_PASSWORD).
 
----
 
-Что нужно сделать: Авто-логин через apex_authentication.login
+3. Процесс вызывает check_ldap_auth.
 
-1. Создай кастомную страницу логина (например, page 9999)
 
-Это может быть blank page без UI.
+4. Если авторизация успешна — вызывается apex_authentication.login(...).
 
-На ней ты разместишь процесс, который:
 
-получает логин/пароль (например, из POST или GET),
+5. Пользователь попадает в приложение уже авторизованным.
 
-вызывает check_ldap_auth,
 
-если успешно — вызывает apex_authentication.login,
-
-если нет — редиректит обратно с ошибкой.
+6. (Опционально) можно использовать cookie или HTTP header, чтобы логинить без пароля.
 
 
 
 
 ---
 
-2. Код процесса на этой странице (PL/SQL Process):
+Шаги
+
+1. Создай PL/SQL функцию для авторизации
+
+Ты уже сделал:
+
+FUNCTION check_ldap_auth(p_username IN VARCHAR2, p_password IN VARCHAR2) RETURN BOOLEAN IS
+  l_session DBMS_LDAP.SESSION;
+  l_retval  PLS_INTEGER;
+  res       BOOLEAN;
+BEGIN
+  BEGIN
+    l_session := DBMS_LDAP.init('vld-ads01.pskb.ad', 389);
+    l_retval := DBMS_LDAP.simple_bind_s(l_session, 'pskb\' || p_username, p_password);
+    res := TRUE;
+  EXCEPTION
+    WHEN OTHERS THEN
+      res := FALSE;
+  END;
+  RETURN res;
+END;
+
+Убедись, что:
+
+У пользователя APEX_xxxxx есть права на DBMS_LDAP (через GRANT EXECUTE ON dbms_ldap TO APEX_xxxx;).
+
+Порт 389 открыт из базы до контроллера домена.
+
+
+
+---
+
+2. Создай специальную страницу в APEX (например, 9999)
+
+Тип: Blank Page
+
+Название: SSO Login
+
+Убери навигацию и боковую панель.
+
+
+Добавь два Hidden Page Items:
+
+P9999_USERNAME
+
+P9999_PASSWORD
+
+
+(или P9999_TOKEN, если будешь передавать по cookie/токену)
+
+
+---
+
+3. Добавь PL/SQL-процесс на эту страницу
+
+> В Page Designer → Processing → Create → PL/SQL Code → After Header
+
+
 
 declare
   l_success boolean;
 begin
-  -- LDAP авторизация
+  -- Проверяем логин/пароль через AD
   l_success := check_ldap_auth(:P9999_USERNAME, :P9999_PASSWORD);
 
   if l_success then
+    -- Авторизуем пользователя в APEX
     apex_authentication.login(
       p_username => :P9999_USERNAME,
-      p_password => null,
-      p_app_page => :APP_ID || ':1' -- на какую страницу перейти после логина
-    );
-  else
-    apex_application.g_print_success_message := 'Неверный логин или пароль';
-    apex_util.redirect_url('f?p=&APP_ID.:9999');
-  end if;
-end;
-
-
----
-
-3. Заменить стандартную схему аутентификации на Custom
-
-Shared Components → Authentication Schemes
-
-Создай новую: Custom
-
-Укажи:
-
-Authentication Function Name: не обязательно — ты вызываешь её вручную
-
-Login Processing Page: 9999 — туда будет отправлен логин/пароль
-
-Post-Login Page: например, 1 или &APP_HOME_PAGE.
-
-
-
-
----
-
-4. (Опционально) сохраняй логин в Cookie — и делай авто-вход
-
-Можно при первом успешном логине:
-
-owa_util.mime_header('text/html', FALSE);
-htp.p('Set-Cookie: SSO_USER=' || :P9999_USERNAME || '; path=/;');
-
-А потом — на специальной landing-странице — проверять наличие cookie SSO_USER и вызывать apex_custom_auth.login.
-
-
----
-
-Результат
-
-Ты получаешь:
-
-Полноценную SSO-интеграцию с AD (без ORDS, без SAML),
-
-Автоматический вход пользователя, если логин/пароль уже есть (например, переданы из внешней системы),
-
-Возможность работать без login-страницы вообще.
-
-
-
----
-
-Если хочешь — могу сгенерировать полный шаблон страницы 9999 и процесс, или помочь завернуть это в POST с внешнего портала. Хочешь?
 

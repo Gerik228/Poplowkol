@@ -1,6 +1,24 @@
 DECLARE
   l_success BOOLEAN;
 BEGIN
+  l_success := pst_utils.check_ldap_auth(:P9999_USERNAME, :P9999_PASSWORD);
+
+  IF l_success THEN
+    -- Вход в APEX и APEX сам сделает редирект
+    apex_authentication.login(:P9999_USERNAME, NULL, '1');
+  ELSE
+    -- Только редиректим обратно на login
+    apex_util.set_session_state('P9999_MESSAGE', 'Неверный логин или пароль');
+    apex_util.redirect_url('f?p=' || :APP_ID || ':9999:' || :APP_SESSION);
+  END IF;
+END;
+
+
+
+
+DECLARE
+  l_success BOOLEAN;
+BEGIN
   -- Вызов вашей функции проверки учетных данных
   l_success := pst_utils.check_ldap_auth(:P9999_USERNAME, :P9999_PASSWORD);
 

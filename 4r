@@ -1,89 +1,14 @@
-Отлично, что прислал — теперь видно всё чётко.
-
-Твоя ошибка:
-
-ORA-04082: NEW or OLD references not allowed in table-level triggers
-
-Что это значит:
-
-Ты пытаешься использовать :NEW.URL в AFTER INSERT OR UPDATE триггере табличного уровня (AFTER INSERT ON news_test), но в этом контексте ты не можешь использовать :NEW или :OLD.
-
-
----
-
-Как правильно
-
-1. Используй триггер строки (row-level)
-
-Ты должен явно указать FOR EACH ROW — тогда :NEW будет доступен.
-
-Вот рабочий пример:
-
-CREATE OR REPLACE TRIGGER trg_news_blob_url
-AFTER INSERT OR UPDATE ON news_test
-FOR EACH ROW
+DECLARE
+  l_url VARCHAR2(4000);
 BEGIN
-  :NEW.url := apex_util.get_blob_file_src('P', :NEW.id);
+  -- Получаем URL
+  l_url := apex_util.get_blob_file_src(
+              p_item_name => 'P31_IMAGE', -- без двоеточия!
+              p_id        => :P31_ID
+           );
+
+  -- Обновляем таблицу
+  UPDATE news_test
+  SET url = l_url
+  WHERE id = :P31_ID;
 END;
-
-Но это всё равно не сработает! Потому что:
-
-
----
-
-2. APEX_UTIL.GET_BLOB_FILE_SRC нельзя использовать в триггерах
-
-Это APEX-функция, она работает только в контексте APEX-сессии — т.е. при выполнении кода из APEX-приложения.
-В триггерах, процедурах, пакетах в базе — не работает.
-
-
----
-
-Вывод:
-
-❌ Нельзя генерировать URL через apex_util.get_blob_file_src в триггере.
-
-✅ Можно это сделать в APEX-процессе, после сохранения записи.
-
-
----
-
-Как всё-таки получить URL BLOB и сохранить в поле (рекомендованный способ)
-
-1. Добавь url в таблицу news_test
-
-
-2. Создай процесс в APEX (после insert/update):
-
-Тип: PL/SQL Code
-
-Код:
-
-
-
-
-UPDATE news_test
-SET url = apex_util.get_blob_file_src(
-             p_item_name => 'P31_IMAGE', -- имя элемента загрузки BLOB
-             p_id        => :P31_ID      -- ID записи
-          )
-WHERE id = :P31_ID;
-
-> Заменить P31_IMAGE и P31_ID на имена твоих элементов на форме.
-
-
-
-
----
-
-Хочешь — напиши, как у тебя называются:
-
-страница,
-
-элемент загрузки (например, P31_FILE),
-
-ID-элемент (например, P31_ID),
-
-
-и я тебе прям готовый код и инструкцию дам, шаг за шагом.
-

@@ -96,4 +96,10 @@ begin
     -- Авторизуем пользователя в APEX
     apex_authentication.login(
       p_username => :P9999_USERNAME,
+      p_password => null,
+      p_app_page => '1' -- стартовая страница
+    );
+  else
+    -- Ошибка: возврат на ту же страницу с сообщением
+    apex_util.set_session_state('P9999_MESSAGE', 'Неверный логин или
 

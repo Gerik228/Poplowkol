@@ -2,10 +2,7 @@ DECLARE
   l_url VARCHAR2(4000);
 BEGIN
   -- Получаем URL
-  l_url := apex_util.get_blob_file_src(
-              p_item_name => 'P31_IMAGE', -- без двоеточия!
-              p_id        => :P31_ID
-           );
+  l_url := apex_util.get_blob_file_src('P31_IMAGE', :P31_ID);
 
   -- Обновляем таблицу
   UPDATE news_test

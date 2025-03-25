@@ -1,3 +1,25 @@
+DECLARE
+  l_success BOOLEAN;
+BEGIN
+  -- Вызов вашей функции проверки учетных данных
+  l_success := pst_utils.check_ldap_auth(:P9999_USERNAME, :P9999_PASSWORD);
+
+  IF l_success THEN
+    -- Установка результата аутентификации
+    APEX_UTIL.SET_AUTHENTICATION_RESULT(0);
+    -- Перенаправление на главную страницу приложения
+    APEX_UTIL.REDIRECT_URL('f?p=' || :APP_ID || ':1:' || :APP_SESSION);
+  ELSE
+    -- Установка результата аутентификации с кодом ошибки
+    APEX_UTIL.SET_AUTHENTICATION_RESULT(-1);
+    -- Вывод сообщения об ошибке
+    APEX_UTIL.SET_CUSTOM_AUTH_STATUS('Неверное имя пользователя или пароль.');
+    -- Перенаправление обратно на страницу входа
+    APEX_UTIL.REDIRECT_URL('f?p=' || :APP_ID || ':9999:' || :APP_SESSION);
+  END IF;
+END;
+
+
 Ошибка ORA-06550: line 9, column X указывает на синтаксическую ошибку в PL/SQL, чаще всего — из-за неправильного вызова процедуры или функции.
 
 

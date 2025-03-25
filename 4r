@@ -1,3 +1,21 @@
+declare
+  l_success boolean;
+begin
+  -- Проверка логина через AD
+  l_success := pst_utils.check_ldap_auth(:P9999_USERNAME, :P9999_PASSWORD);
+
+  if l_success then
+    -- Логин в APEX (позиционные параметры!)
+    apex_authentication.login(:P9999_USERNAME, NULL, '1');
+  else
+    -- Ошибка: возвращаем сообщение
+    apex_util.set_session_state('P9999_MESSAGE', 'Неверный логин или пароль');
+    apex_util.redirect_url('f?p=&APP_ID.:9999');
+  end if;
+end;
+
+
+
 Отлично! Сейчас дам тебе подробную пошаговую инструкцию, как реализовать SSO-авторизацию в Oracle APEX через LDAP (AD) с использованием твоей функции check_ldap_auth. Эта реализация будет работать без стандартной страницы входа, автоматически логинивая пользователя при успешной проверке.
 
 

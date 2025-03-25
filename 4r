@@ -1,18 +1,60 @@
+Ошибка ORA-06550: line 9, column X указывает на синтаксическую ошибку в PL/SQL, чаще всего — из-за неправильного вызова процедуры или функции.
+
+
+---
+
+Что нужно проверить:
+
+1. Форма вызова apex_authentication.login
+
+Ты должен вызывать её позиционно, а не с =>.
+
+Вот правильный шаблон:
+
+apex_authentication.login('USERNAME', NULL, 'APP_ID:PAGE_ID');
+
+или если из переменных:
+
+apex_authentication.login(:P9999_USERNAME, NULL, '1');
+
+
+---
+
+2. Проверка кода на странице
+
+Полный пример кода на странице 9999, в PL/SQL Process → After Header:
+
 declare
   l_success boolean;
 begin
-  -- Проверка логина через AD
   l_success := pst_utils.check_ldap_auth(:P9999_USERNAME, :P9999_PASSWORD);
 
   if l_success then
-    -- Логин в APEX (позиционные параметры!)
     apex_authentication.login(:P9999_USERNAME, NULL, '1');
   else
-    -- Ошибка: возвращаем сообщение
     apex_util.set_session_state('P9999_MESSAGE', 'Неверный логин или пароль');
     apex_util.redirect_url('f?p=&APP_ID.:9999');
   end if;
 end;
+
+
+---
+
+3. Убедись, что переменные P9999_USERNAME и P9999_PASSWORD существуют
+
+Они должны быть page items на странице 9999.
+
+Тип может быть Hidden или Text Field.
+
+Доступ к session state — Unrestricted или Checksum Required.
+
+
+
+---
+
+Если хочешь — можешь прислать код полностью (лучше в виде текстового блока), и я точно укажу, где проблема. Или сделаю экспорт/скрипт этой страницы.
+
+
 
 
 

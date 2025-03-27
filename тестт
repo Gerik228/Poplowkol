@@ -1,85 +1,75 @@
-Отлично, давай разберёмся конкретно и точно.
+Отлично! У тебя таблица PRODUCT_IMAGES со следующими колонками:
+
+ID (primary key, NUMBER)
+
+NAME (название)
+
+IMAGE_BLOB (BLOB-данные)
+
+MIME_TYPE (тип содержимого)
+
+IMAGE_URL (URL — похоже, ты пробовал сохранить ссылку прямо в таблице)
+
 
 
 ---
 
-Ты видишь ошибку, потому что используешь PL/SQL функцию apex_util.get_blob_file_src в SQL.
+Давай сделаем правильный SQL-запрос, который будет возвращать URL к BLOB без ошибок.
 
-Эта функция не поддерживается в SQL напрямую, только в PL/SQL (например, в Dynamic Action, Process или Function Returning SQL Query).
-
-
----
-
-Правильный способ получить URL BLOB в SQL (и APEX 23.1 это поддерживает) — через виртуальную колонку с формированием URL вручную:
+В APEX 23.1 лучший способ — использовать apex_util.get_blob_file_src с позиционными параметрами в SQL, вот так:
 
 select
     id,
-    title,
-    description,
-    dbms_lob.getlength(image) as image_size,
-    'wwv_flow_file_mgr.get_file?p_security_group_id=' || apex_application.g_flow_security_group_id ||
-    '&p_fname=' || id || '_image' as image_url
-from news_test
-
-Но это костыль и требует настройки APEX для обслуживания BLOB через wwv_flow_file_mgr.
+    name,
+    mime_type,
+    dbms_lob.getlength(image_blob) as image_size,
+    apex_util.get_blob_file_src('P', 'PRODUCT_IMAGES', id) as image_url
+from product_images
 
 
 ---
 
-Рекомендуемый способ — использовать APEX автоматическую поддержку BLOB колонок в Report/Card/Region.
+Что делает этот код:
 
-Если ты:
+'P' — означает источник: table/view
 
-Создаешь Interactive Report, Card, или Classic Report
+'PRODUCT_IMAGES' — имя твоей таблицы (должно быть в верхнем регистре!)
 
-И хочешь отображать изображение из BLOB
+id — значение первичного ключа записи, к которой привязан BLOB
 
-
-Тогда не пиши SQL руками. Просто:
-
-1. Используй мастер создания региона (например, Cards)
-
-Укажи таблицу NEWS_TEST
-
-Укажи поле IMAGE как колонку с BLOB
-
-APEX сам подставит правильный apex_util.get_blob_file_src и сгенерирует URL за кулисами.
-
-
-2. Или создай отдельный Application Process (например, GETIMAGE)
-
-Сделай Process:
-
-declare
-    l_mime  varchar2(255);
-    l_blob  blob;
-    l_name  varchar2(200);
-begin
-    select mime_type, image, filename
-    into l_mime, l_blob, l_name
-    from news_test
-    where id = :P5_ID;
-
-    sys.htp.init;
-    owa_util.mime_header(l_mime, false);
-    htp.p('Content-length: ' || dbms_lob.getlength(l_blob));
-    htp.p('Content-Disposition: filename="' || l_name || '"');
-    owa_util.http_header_close;
-    wpg_docload.download_file(l_blob);
-    apex_application.stop_apex_engine;
-end;
-
-И генерируй ссылку:
-
-select
-    id,
-    title,
-    description,
-    'f?p=&APP_ID.:0:&SESSION.:APPLICATION_PROCESS=GETIMAGE:::P5_ID:' || id as image_url
-from news_test
 
 
 ---
 
-Хочешь, я сделаю с нуля рабочий пример с твоей таблицей NEWS_TEST?
+После этого:
+
+Ты можешь использовать колонку image_url в:
+
+Cards
+
+Classic Reports
+
+Interactive Reports
+
+List Views
+
+Или напрямую в Image item
+
+
+
+---
+
+Важно
+
+Убедись, что image_blob действительно содержит BLOB.
+
+apex_util.get_blob_file_src работает только в APEX-приложении (не в SQL Developer).
+
+IMAGE_URL колонка в таблице не обязательна, она тебе не нужна, если URL динамически формируется.
+
+
+
+---
+
+Если хочешь: могу показать, как на базе этой таблицы создать карточки с фото прямо сейчас.
 

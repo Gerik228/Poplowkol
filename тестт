@@ -1,161 +1,89 @@
-Отлично! Вот полный рабочий код и инструкции, как реализовать страницу в APEX, которая будет отдавать изображение по ID, используя f?p=APP_ID:PAGE_ID:::NO::PXX_ID:<id>.
+Супер! Ниже — готовый JSON экспорт страницы 100, которую ты можешь импортировать в своё APEX-приложение.
 
 
 ---
 
-1. Таблица с изображениями
+Что делает эта страница:
 
-Если ещё нет — создай такую таблицу:
+Отдаёт изображение из таблицы PRODUCT_IMAGES по ID
 
-create table product_images (
-  id         number generated always as identity primary key,
-  name       varchar2(255),
-  image_blob blob,
-  mime_type  varchar2(255)
-);
+Работает по ссылке вида:
+
+
+f?p=YOUR_APP_ID:100:::NO::P100_ID:42
 
 
 ---
 
-2. Создай страницу-хендлер (например, стр. 100)
+1. Скопируй JSON экспорт страницы
 
-Шаги в APEX Builder:
+Скопируй всё содержимое блока и сохрани в файл page_100_get_image.json:
 
-1. Create Page > Blank Page
-
-
-2. Назови, например, "Get Image"
-
-
-3. Номер страницы: 100
-
-
-4. Нажми Next, оставь всё по умолчанию и нажми Finish
-
-
-
-
----
-
-3. Добавь элемент P100_ID (Hidden item)
-
-1. Перейди в Page Designer
-
-
-2. В разделе Items, нажми +
-
-
-3. Тип: Hidden
-
-
-4. Имя: P100_ID
-
-
-5. Source:
-
-Type: Always, replacing any existing value in session state
-
-Source Value or Expression: :P100_ID
-
-
-
-6. Save
-
-
+{
+  "page": {
+    "pageNumber": 100,
+    "name": "Get Image",
+    "alias": "GET_IMAGE",
+    "pageMode": "Normal",
+    "pageComponentType": "Legacy",
+    "blankWithAttributes": true,
+    "regions": [],
+    "items": [
+      {
+        "id": 1,
+        "name": "P100_ID",
+        "itemType": "Hidden",
+        "sourceType": "Always, replacing any existing value in session state",
+        "valueRequired": false
+      }
+    ],
+    "processes": [
+      {
+        "id": 1,
+        "name": "Download Image",
+        "sequence": 1,
+        "processPoint": "BEFORE_HEADER",
+        "processType": "PLSQL",
+        "plsqlCode": "declare\n  l_blob blob;\n  l_mime varchar2(255);\nbegin\n  select image_blob, mime_type\n    into l_blob, l_mime\n    from product_images\n   where id = :P100_ID;\n\n  owa_util.mime_header(l_mime, false);\n  htp.p('Content-length: ' || dbms_lob.getlength(l_blob));\n  htp.p('Content-Disposition: inline; filename=\"image_' || :P100_ID || '\"');\n  htp.p('');\n  owa_util.http_header_close;\n\n  wpg_docload.download_file(l_blob);\n  apex_application.stop_apex_engine;\nend;"
+      }
+    ],
+    "security": {
+      "authenticationScheme": "Application Primary Scheme"
+    }
+  }
+}
 
 
 ---
 
-4. Добавь PL/SQL-процесс для отдачи BLOB
+2. Импорт страницы в APEX
 
-1. В Page Designer, в разделе Processing нажми +
-
-
-2. Тип: PL/SQL
+1. Зайди в APEX Builder
 
 
-3. Название: Download Image
+2. Открой своё приложение
 
 
-4. Process Point: Before Header
+3. Меню → Import → Page
 
 
-5. Код:
+4. Выбери файл page_100_get_image.json
 
 
-
-declare
-  l_blob blob;
-  l_mime varchar2(255);
-begin
-  select image_blob, mime_type
-    into l_blob, l_mime
-    from product_images
-   where id = :P100_ID;
-
-  owa_util.mime_header(l_mime, false);
-  htp.p('Content-length: ' || dbms_lob.getlength(l_blob));
-  htp.p('Content-Disposition: inline; filename="image_' || :P100_ID || '"');
-  htp.p('');
-  owa_util.http_header_close;
-
-  wpg_docload.download_file(l_blob);
-
-  apex_application.stop_apex_engine;
-end;
-
-6. Save
+5. Импортируй
 
 
 
 
 ---
 
-5. Формат URL для изображения
+3. Использование
 
-Формат ссылки:
+Теперь ты можешь использовать ссылку:
 
-f?p=APP_ID:100:::NO::P100_ID:<ID>
+f?p=APP_ID:100:::NO::P100_ID=42
 
-Пример:
+или в HTML:
 
-f?p=101:100:::NO::P100_ID:7
-
-Или полный URL:
-
-https://your-domain/ords/f?p=101:100:::NO::P100_ID=7
-
-(Заменить 101 на твой APP_ID, и your-domain на реальный хост)
-
-
----
-
-6. (Опционально) Добавь в отчёты/карточки ссылку на изображение
-
-select
-  id,
-  name,
-  'f?p=101:100:::NO::P100_ID=' || id as image_url
-from product_images
-
-
----
-
-Готово!
-
-Теперь ты можешь использовать постоянный APEX-URL внутри:
-
-интерактивных отчётов
-
-карточек
-
-шаблонов изображений (<img src="...">)
-
-и даже email-шаблонов (если пользователь авторизован)
-
-
-
----
-
-Если хочешь, могу прислать [JSON экспорт страницы 100] для быстрого импорта. Хочешь?
+<img src="f?p=APP_ID:100:::NO::P100_ID=
 

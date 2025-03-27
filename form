@@ -1,0 +1,79 @@
+Отличный вопрос! MIME-тип (например, image/jpeg, image/png) — это обязательный параметр, который указывает браузеру, как интерпретировать файл. Его нужно сохранять вместе с BLOB, чтобы правильно отдавать изображение.
+
+
+---
+
+1. Если загружаешь через APEX File Browse (рекомендуется)
+
+Когда ты используешь элемент File Browse, APEX автоматически предоставляет системные переменные, включая MIME-тип:
+
+Пример: Процесс вставки в таблицу
+
+insert into product_images (
+  name,
+  image_blob,
+  mime_type
+) values (
+  :PXX_FILENAME,
+  :PXX_FILE_BLOB,
+  :PXX_FILE_MIME_TYPE
+);
+
+PXX — это имя твоего элемента File Browse (например, P1_FILE)
+
+MIME-тип будет автоматически определён (например, image/png, image/jpeg, application/pdf)
+
+
+
+---
+
+2. Если вставляешь вручную через PL/SQL
+
+Ты можешь задать MIME-тип напрямую:
+
+insert into product_images (
+  name,
+  image_blob,
+  mime_type
+) values (
+  'Test',
+  :blob_data,
+  'image/png' -- Указываешь вручную
+);
+
+
+---
+
+3. Если грузишь с помощью BFILE из директории (PL/SQL)
+
+declare
+  l_bfile  bfile := bfilename('MY_DIR', 'image.jpg');
+  l_blob   blob;
+begin
+  dbms_lob.open(l_bfile, dbms_lob.lob_readonly);
+  dbms_lob.createtemporary(l_blob, true);
+  dbms_lob.loadfromfile(l_blob, l_bfile, dbms_lob.getlength(l_bfile));
+  dbms_lob.close(l_bfile);
+
+  insert into product_images (name, image_blob, mime_type)
+  values ('Test Image', l_blob, 'image/jpeg');
+end;
+
+
+---
+
+Как определить MIME-тип, если неизвестен?
+
+Если у тебя только файл и ты не знаешь MIME-тип:
+
+Вариант 1: По расширению (простейший способ)
+
+Вариант 2: Использовать PL/SQL-функцию (можно написать свою)
+
+Если надо — могу дать PL/SQL-функцию, которая по расширению возвращает MIME-type.
+
+
+---
+
+Хочешь пример загрузочной формы с File Browse, которая всё сохраняет правильно?
+

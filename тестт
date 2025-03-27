@@ -1,0 +1,99 @@
+Отлично, ты всё сделал правильно — а эта ошибка "Protected by privilege" (красный крестик) говорит, что доступ к REST-модулю ограничен, и ты явно не указал привилегии или не отключил защиту.
+
+
+---
+
+Решение 1: Убрать защиту (для открытого доступа)
+
+Если ты хочешь, чтобы REST endpoint был публичным, без авторизации:
+
+Выполни:
+
+begin
+  ords.define_module(
+    p_module_name        => 'images',
+    p_base_path          => '/images/',
+    p_items_per_page     => 0,
+    p_status             => 'PUBLISHED',  -- важно
+    p_comments           => 'Public image module'
+  );
+end;
+
+Затем обнови шаблон, чтобы снять защиту:
+
+begin
+  ords.define_template(
+    p_module_name    => 'images',
+    p_pattern        => ':id',
+    p_priority       => 0,
+    p_etag_type      => 'HASH',
+    p_etag_query     => null,
+    p_comments       => 'Get image by ID',
+    p_mimes_allowed  => null,
+    p_status         => 'PUBLISHED'  -- снять защиту
+  );
+end;
+
+Важно: При создании модуля и шаблона по умолчанию они защищены (p_status => 'PROTECTED').
+
+
+---
+
+Решение 2: Добавить привилегию и выдать доступ
+
+Если тебе нужна авторизация, то:
+
+1. Создай привилегию:
+
+
+
+begin
+  ords.create_privilege(
+    p_privilege_name => 'read_images',
+    p_label          => 'Read Images',
+    p_description    => 'Allow access to product images',
+    p_method         => 'GET',
+    p_resource       => '/images/:id',
+    p_roles          => 'SQL Developer', -- или твоя роль
+    p_status         => 'PUBLISHED'
+  );
+end;
+
+2. Назначь эту привилегию модулю:
+
+
+
+begin
+  ords.add_module_privilege(
+    p_module_name     => 'images',
+    p_privilege_name  => 'read_images'
+  );
+end;
+
+3. Убедись, что ты или приложение вызываешь endpoint с нужным токеном / ролью.
+
+
+
+
+---
+
+Проверка статуса:
+
+Ты можешь посмотреть статус REST-модуля:
+
+select name, status, uri_prefix
+from user_ords_modules
+where name = 'images';
+
+Если status = PROTECTED — нужен токен или отключай защиту, как выше.
+
+
+---
+
+Вывод:
+
+
+---
+
+Хочешь, я сгенерирую рабочий CREATE OR REPLACE блок для всей конфигурации с открытым доступом?
+

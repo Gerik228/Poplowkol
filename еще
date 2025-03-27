@@ -1,0 +1,133 @@
+Супер! Давай создадим форму в APEX, через которую ты сможешь загружать изображения в таблицу PRODUCT_IMAGES. Она будет использовать элемент File Browse, и автоматически сохранять:
+
+имя файла (name)
+
+содержимое файла (image_blob)
+
+MIME-тип (mime_type)
+
+
+
+---
+
+Пошаговая инструкция: Форма загрузки изображений в APEX
+
+
+---
+
+1. Таблица должна быть такой (если ещё нет):
+
+create table product_images (
+  id         number generated always as identity primary key,
+  name       varchar2(255),
+  image_blob blob,
+  mime_type  varchar2(255)
+);
+
+
+---
+
+2. Создаём страницу с формой загрузки
+
+В APEX Builder:
+
+1. Перейди в App Builder → выбери приложение 112
+
+
+2. Нажми Create > Page
+
+
+3. Выбери: Form → Form on a Table with Report
+
+
+4. Таблица: PRODUCT_IMAGES
+
+
+5. Отметь галочку: "Include Report Page" (если хочешь таблицу с записями)
+
+
+6. Назови страницу: Upload Image
+
+
+7. Finish
+
+
+
+
+---
+
+3. Настрой поле загрузки (File Browse)
+
+В Page Designer на форме:
+
+1. Найди поле, связанное с колонкой IMAGE_BLOB
+
+
+2. Измени тип на: File Browse
+
+
+3. В свойствах:
+
+Storage Type: BLOB column specified in item source
+
+MIME Type Column: MIME_TYPE
+
+Filename Column: NAME
+
+Content-Disposition: Inline
+
+
+
+4. Сохрани
+
+
+
+
+---
+
+4. Запусти страницу и проверь
+
+1. Зайди на страницу формы
+
+
+2. Выбери файл (например, image.jpg)
+
+
+3. Нажми Submit
+
+
+
+В таблице PRODUCT_IMAGES создастся строка с:
+
+image_blob — содержимым файла
+
+mime_type — например, image/jpeg
+
+name — image.jpg
+
+
+
+---
+
+5. Посмотреть загруженные изображения
+
+В отчёте (если он есть), добавь HTML-выражение:
+
+<img src="f?p=112:100:::NO::P100_ID=#ID#" width="100">
+
+Так изображения будут отображаться прямо в отчёте!
+
+
+---
+
+Хочешь бонус?
+
+Могу:
+
+Добавить колонку image_url, которая автоматически генерирует ссылку
+
+Сделать красивую карточку превью для отчёта
+
+
+Готов продолжить?
+

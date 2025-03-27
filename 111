@@ -1,0 +1,13 @@
+select 
+    id,
+    title,
+    description,
+    dbms_lob.getlength(image) as image_size,
+    mime_type,
+    filename,
+    apex_util.get_blob_file_src(
+        p_table_name => 'NEWS_TEST',
+        p_primary_key => id,
+        p_blob_column => 'IMAGE'
+    ) as image_url
+from news_test

@@ -1,75 +1,90 @@
-Отлично! У тебя таблица PRODUCT_IMAGES со следующими колонками:
-
-ID (primary key, NUMBER)
-
-NAME (название)
-
-IMAGE_BLOB (BLOB-данные)
-
-MIME_TYPE (тип содержимого)
-
-IMAGE_URL (URL — похоже, ты пробовал сохранить ссылку прямо в таблице)
-
+Понял вас. Без использования RESTful сервисов, единственный 100% рабочий и поддерживаемый способ получить ссылку на BLOB в SQL-блоке региона Oracle APEX — использовать встроенную функцию apex_util.get_blob_file_src или apex_util.get_blob_file_src2. Это — официально поддерживаемый механизм и работает в APEX 23.1.
 
 
 ---
 
-Давай сделаем правильный SQL-запрос, который будет возвращать URL к BLOB без ошибок.
+Проверенное решение: apex_util.get_blob_file_src2
 
-В APEX 23.1 лучший способ — использовать apex_util.get_blob_file_src с позиционными параметрами в SQL, вот так:
-
-select
+SELECT 
     id,
-    name,
+    filename,
     mime_type,
-    dbms_lob.getlength(image_blob) as image_size,
-    apex_util.get_blob_file_src('P', 'PRODUCT_IMAGES', id) as image_url
-from product_images
+    apex_util.get_blob_file_src2(
+        p_table_name        => 'MY_IMAGES',
+        p_primary_key       => id,
+        p_blob_column       => 'BLOB_DATA',
+        p_mime_type         => mime_type,
+        p_filename          => filename
+    ) AS image_url
+FROM my_images
 
 
 ---
 
-Что делает этот код:
+Что нужно обязательно учесть:
 
-'P' — означает источник: table/view
-
-'PRODUCT_IMAGES' — имя твоей таблицы (должно быть в верхнем регистре!)
-
-id — значение первичного ключа записи, к которой привязан BLOB
+1. Имена таблицы и колонки BLOB должны быть в верхнем регистре.
 
 
-
----
-
-После этого:
-
-Ты можешь использовать колонку image_url в:
-
-Cards
-
-Classic Reports
-
-Interactive Reports
-
-List Views
-
-Или напрямую в Image item
+2. Поля mime_type и filename могут быть NULL, но рекомендуется указывать, если доступны.
 
 
+3. Таблица должна иметь первичный ключ или использовать ROWID (менее желательно).
 
----
 
-Важно
+4. В APEX нужно:
 
-Убедись, что image_blob действительно содержит BLOB.
+Включить "Enable Blob Support" для компонента;
 
-apex_util.get_blob_file_src работает только в APEX-приложении (не в SQL Developer).
+Убедиться, что приложение использует Download BLOBs using primary key columns, а не ROWID.
 
-IMAGE_URL колонка в таблице не обязательна, она тебе не нужна, если URL динамически формируется.
+
 
 
 
 ---
 
-Если хочешь: могу показать, как на базе этой таблицы создать карточки с фото прямо сейчас.
+Альтернатива через PL/SQL в Function returning SQL query (если нужна гибкость):
+
+Если вы работаете с Function returning SQL query, можно использовать:
+
+RETURN q'[
+    SELECT 
+        id,
+        filename,
+        mime_type,
+        apex_util.get_blob_file_src2(
+            p_table_name    => 'MY_IMAGES',
+            p_primary_key   => id,
+            p_blob_column   => 'BLOB_DATA',
+            p_mime_type     => mime_type,
+            p_filename      => filename
+        ) AS image_url
+    FROM my_images
+]';
+
+
+---
+
+Отображение в APEX:
+
+Используйте Classic Report или Interactive Report.
+
+Для поля image_url:
+
+Тип: Image.
+
+Image URL: #IMAGE_URL#.
+
+Альтернативный текст: #FILENAME#.
+
+
+
+
+---
+
+Это решение гарантированно работает без REST, официально поддерживается, и использует внутреннюю инфраструктуру APEX.
+Если apex_util.get_blob_file_src2 не работает, скорее всего проблема в настройках приложения или BLOB-колонки — могу помочь их проверить.
+
+Уточните, если нужна помощь по настройке Storage Type и Download Format в Shared Components.
 

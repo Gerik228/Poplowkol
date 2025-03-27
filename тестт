@@ -1,188 +1,161 @@
-Отлично! С учётом, что у тебя Oracle APEX 23.1 + ORDS (вероятно 22.x или 23.x), давай напишу полную рабочую инструкцию с нуля, как:
-
-Хранить изображения в BLOB в таблице,
-
-Создать REST Endpoint без авторизации,
-
-Получить постоянные прямые URL, которые можно записывать в таблицу и использовать где угодно.
-
+Отлично! Вот полный рабочий код и инструкции, как реализовать страницу в APEX, которая будет отдавать изображение по ID, используя f?p=APP_ID:PAGE_ID:::NO::PXX_ID:<id>.
 
 
 ---
 
-Цель:
+1. Таблица с изображениями
 
-Создать ссылку вида:
-
-https://your-domain/ords/hr/images/42
-
-где 42 — ID изображения в таблице.
-
-
----
-
-1. Таблица для изображений
-
-Создай таблицу, где хранятся изображения:
+Если ещё нет — создай такую таблицу:
 
 create table product_images (
   id         number generated always as identity primary key,
   name       varchar2(255),
   image_blob blob,
-  mime_type  varchar2(255),
-  image_url  varchar2(1000)
+  mime_type  varchar2(255)
 );
 
 
 ---
 
-2. Включи REST-доступ к схеме (один раз)
+2. Создай страницу-хендлер (например, стр. 100)
 
-begin
-  ords.enable_schema(
-    p_enabled             => true,
-    p_schema              => 'HR',  -- замени на свою схему
-    p_url_mapping_type    => 'BASE_PATH',
-    p_url_mapping_pattern => 'hr',
-    p_auto_rest_auth      => false
-  );
-end;
+Шаги в APEX Builder:
 
-Проверь результат:
-
-select * from user_ords_schemas where schema = 'HR';
+1. Create Page > Blank Page
 
 
----
-
-3. Создай REST-модуль images
-
-begin
-  ords.define_module(
-    p_module_name    => 'images',
-    p_base_path      => '/images/',
-    p_items_per_page => 0,
-    p_status         => 'PUBLISHED'
-  );
-end;
+2. Назови, например, "Get Image"
 
 
----
-
-4. Создай шаблон с параметром :id
-
-begin
-  ords.define_template(
-    p_module_name => 'images',
-    p_pattern     => ':id',
-    p_priority    => 0,
-    p_status      => 'PUBLISHED'
-  );
-end;
+3. Номер страницы: 100
 
 
----
+4. Нажми Next, оставь всё по умолчанию и нажми Finish
 
-5. Создай handler (GET), который отдаёт изображение
-
-begin
-  ords.define_handler(
-    p_module_name   => 'images',
-    p_pattern       => ':id',
-    p_method        => 'GET',
-    p_source_type   => ords.source_type_plsql,
-    p_source        => q'[
-      declare
-        l_blob blob;
-        l_mime varchar2(255);
-      begin
-        select image_blob, mime_type
-          into l_blob, l_mime
-          from product_images
-         where id = :id;
-
-        owa_util.mime_header(l_mime, false);
-        htp.p('Content-length: ' || dbms_lob.getlength(l_blob));
-        htp.p('Content-Disposition: inline; filename="image_' || :id || '"');
-        htp.p('');
-        owa_util.http_header_close;
-
-        wpg_docload.download_file(l_blob);
-      end;
-    ]',
-    p_items_per_page => 0
-  );
-end;
-
-
----
-
-6. Обновляй image_url при вставке или обновлении
-
-create or replace trigger trg_product_images_biu
-before insert or update on product_images
-for each row
-begin
-  :new.image_url := 'https://your-domain/ords/hr/images/' || :new.id;
-end;
-
-Важно:
-
-Замени your-domain на твой реальный домен (например: apex.mycompany.com)
-
-hr — это alias твоей схемы из шага 2
 
 
 
 ---
 
-7. Проверка
+3. Добавь элемент P100_ID (Hidden item)
 
-Допустим, у тебя запись с id = 42.
+1. Перейди в Page Designer
 
-Перейди по ссылке:
 
-https://your-domain/ords/hr/images/42
+2. В разделе Items, нажми +
 
-Изображение должно загрузиться напрямую без логина. Если не работает — проверь статус схемы и модулей:
 
-select module_name, status from user_ords_modules;
-select schema, enabled from user_ords_schemas;
+3. Тип: Hidden
+
+
+4. Имя: P100_ID
+
+
+5. Source:
+
+Type: Always, replacing any existing value in session state
+
+Source Value or Expression: :P100_ID
+
+
+
+6. Save
+
+
 
 
 ---
 
-8. (Опционально) Вставка тестовых данных
+4. Добавь PL/SQL-процесс для отдачи BLOB
 
-Если хочешь вставить тестовое изображение:
+1. В Page Designer, в разделе Processing нажми +
+
+
+2. Тип: PL/SQL
+
+
+3. Название: Download Image
+
+
+4. Process Point: Before Header
+
+
+5. Код:
+
+
 
 declare
-  l_bfile  bfile := bfilename('DOCUMENTS', 'image.jpg'); -- файл в директории
-  l_blob   blob;
+  l_blob blob;
+  l_mime varchar2(255);
 begin
-  dbms_lob.open(l_bfile, dbms_lob.lob_readonly);
-  dbms_lob.createtemporary(l_blob, true);
-  dbms_lob.loadfromfile(l_blob, l_bfile, dbms_lob.getlength(l_bfile));
-  dbms_lob.close(l_bfile);
+  select image_blob, mime_type
+    into l_blob, l_mime
+    from product_images
+   where id = :P100_ID;
 
-  insert into product_images (name, image_blob, mime_type)
-  values ('Test Image', l_blob, 'image/jpeg');
+  owa_util.mime_header(l_mime, false);
+  htp.p('Content-length: ' || dbms_lob.getlength(l_blob));
+  htp.p('Content-Disposition: inline; filename="image_' || :P100_ID || '"');
+  htp.p('');
+  owa_util.http_header_close;
+
+  wpg_docload.download_file(l_blob);
+
+  apex_application.stop_apex_engine;
 end;
 
+6. Save
 
----
-
-Итог:
-
-product_images содержит image_url
-
-REST endpoint работает по постоянному URL
-
-Никакой APEX-сессии, токена, или f?p=... — просто и чисто
 
 
 
 ---
 
-Хочешь — сгенерирую пакет, который упростит вставку изображений и обновление ссылок. Или показать, как защитить этот endpoint через OAuth2?
+5. Формат URL для изображения
+
+Формат ссылки:
+
+f?p=APP_ID:100:::NO::P100_ID:<ID>
+
+Пример:
+
+f?p=101:100:::NO::P100_ID:7
+
+Или полный URL:
+
+https://your-domain/ords/f?p=101:100:::NO::P100_ID=7
+
+(Заменить 101 на твой APP_ID, и your-domain на реальный хост)
+
+
+---
+
+6. (Опционально) Добавь в отчёты/карточки ссылку на изображение
+
+select
+  id,
+  name,
+  'f?p=101:100:::NO::P100_ID=' || id as image_url
+from product_images
+
+
+---
+
+Готово!
+
+Теперь ты можешь использовать постоянный APEX-URL внутри:
+
+интерактивных отчётов
+
+карточек
+
+шаблонов изображений (<img src="...">)
+
+и даже email-шаблонов (если пользователь авторизован)
+
+
+
+---
+
+Если хочешь, могу прислать [JSON экспорт страницы 100] для быстрого импорта. Хочешь?
 

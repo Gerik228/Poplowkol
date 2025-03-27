@@ -1,139 +1,186 @@
-Точно! В APEX нельзя импортировать JSON напрямую — нужен SQL-файл или ZIP-архив, как ты правильно заметил. Сейчас я покажу, как сделать экспорт страницы через интерфейс, и в каком виде тебе его предоставить.
+Отлично, давай сделаем всё вручную с нуля в APEX, чтобы ты точно понял, как это работает и мог повторить в любом приложении.
 
 
 ---
 
-Вариант 1: Я дам тебе готовый SQL-файл
+Цель:
 
-Вот готовый SQL-экспорт страницы 100 (в виде текста — ты просто копируешь и сохраняешь .sql файл):
+Показ изображений, хранящихся в таблице (в виде BLOB), только внутри одного APEX-приложения.
+Изображения будут доступны по ссылке:
 
-Скачай/создай файл page_100_get_image.sql:
-
--- Page 100: Get Image
-prompt  PAGE 100: Get Image
-begin
-    apex_util.set_security_group_id(p_security_group_id => (select workspace_id from apex_workspaces where workspace = 'YOUR_WORKSPACE'));
-    apex_application_install.set_application_id(YOUR_APP_ID);
-    apex_application_install.set_application_alias('YOUR_APP_ALIAS');
-
-    apex_application_install.set_page_id(100);
-end;
-/
-
-begin
-  wwv_flow_api.create_page(
-    p_id              => 100,
-    p_flow_id         => YOUR_APP_ID,
-    p_tab_set         => '',
-    p_name            => 'Get Image',
-    p_step_title      => 'Get Image',
-    p_allow_duplicate_submissions => 'Y',
-    p_step_sub_title  => 'Get Image',
-    p_step_sub_title_type => 'TEXT_WITH_SUBSTITUTIONS',
-    p_autocomplete_on_off => 'OFF',
-    p_page_template   => 0,
-    p_page_is_public  => 'N',
-    p_protection_level => 'C',
-    p_page_mode       => 'NORMAL',
-    p_step_template   => 0,
-    p_alias           => 'GET_IMAGE',
-    p_html_page_header=> '',
-    p_step_comment    => 'Download image by ID',
-    p_page_group_id   => null
-  );
-end;
-/
-
--- Hidden item P100_ID
-begin
-  wwv_flow_api.create_page_item(
-    p_id            => 1001,
-    p_flow_id       => YOUR_APP_ID,
-    p_page_id       => 100,
-    p_name          => 'P100_ID',
-    p_item_sequence => 10,
-    p_item_plug_id  => null,
-    p_item_source   => '',
-    p_item_source_type => 'STATIC',
-    p_item_type     => 'HIDDEN',
-    p_is_required   => 'N',
-    p_item_default_type => 'STATIC',
-    p_source_type   => 'ALWAYS',
-    p_display_when_type => 'ALWAYS',
-    p_display_as    => 'HIDDEN'
-  );
-end;
-/
-
--- PL/SQL process to download image
-begin
-  wwv_flow_api.create_page_process(
-    p_id              => 1002,
-    p_flow_id         => YOUR_APP_ID,
-    p_page_id         => 100,
-    p_process_sequence=> 1,
-    p_process_point   => 'BEFORE_HEADER',
-    p_process_type    => 'PLSQL',
-    p_process_name    => 'Download Image',
-    p_process_sql     => q'[
-      declare
-        l_blob blob;
-        l_mime varchar2(255);
-      begin
-        select image_blob, mime_type
-        into l_blob, l_mime
-        from product_images
-        where id = :P100_ID;
-
-        owa_util.mime_header(l_mime, false);
-        htp.p('Content-length: ' || dbms_lob.getlength(l_blob));
-        htp.p('Content-Disposition: inline; filename="image_' || :P100_ID || '"');
-        htp.p('');
-        owa_util.http_header_close;
-        wpg_docload.download_file(l_blob);
-        apex_application.stop_apex_engine;
-      end;
-    ]',
-    p_error_display_location => 'INLINE_IN_NOTIFICATION'
-  );
-end;
-/
+f?p=112:100:::NO::P100_ID=<ID>
 
 
 ---
 
-Что заменить:
+Полная инструкция по шагам (для APEX 23.1)
 
-YOUR_APP_ID → ID твоего приложения
+1. Создай таблицу для изображений
 
-YOUR_WORKSPACE → имя workspace (можно узнать в APEX_WORKSPACES)
+Если ещё не создана:
 
-YOUR_APP_ALIAS → алиас приложения (или оставь 'APP')
+create table product_images (
+  id         number generated always as identity primary key,
+  name       varchar2(255),
+  image_blob blob,
+  mime_type  varchar2(255)
+);
 
+Можно добавить записи через форму или вручную. Главное — заполнить image_blob и mime_type (image/jpeg, image/png и т.п.).
 
 
 ---
 
-Вариант 2: Я могу сгенерировать и прислать тебе ZIP
+2. Создай страницу-хендлер (стр. 100)
 
-Если хочешь, чтобы я сделал экспорт страницы 100 в ZIP-формате, ты можешь:
+В APEX Builder:
 
-сказать мне APP ID
-
-имя workspace
-
-или просто дать структуру
+1. Открой App Builder → выбери приложение 112
 
 
-И я сгенерирую полноценный ZIP, который ты импортируешь через APEX:
+2. Нажми Create > Page
 
-> APEX → App Builder → Import → Choose File (ZIP) → Upload
+
+3. Тип страницы: Blank Page
+
+
+4. Page Number: 100
+
+
+5. Имя: Get Image
+
+
+6. Finish
 
 
 
 
 ---
 
-Скажи, какой вариант тебе удобнее — SQL или ZIP?
-Могу собрать и скинуть ссылку на скачивание ZIP (через Google Drive или другой способ).
+3. Добавь hidden item P100_ID
+
+В Page Designer:
+
+1. В левой части, Items → +
+
+
+2. Тип: Hidden
+
+
+3. Имя: P100_ID
+
+
+4. Source Type: Always, replacing any existing value in session state
+
+
+5. Save
+
+
+
+
+---
+
+4. Добавь PL/SQL-процесс, который отдаёт изображение
+
+1. В разделе Processing → +
+
+
+2. Тип: PL/SQL
+
+
+3. Имя: Download Image
+
+
+4. Execution Point: Before Header
+
+
+5. Код:
+
+
+
+declare
+  l_blob blob;
+  l_mime varchar2(255);
+begin
+  select image_blob, mime_type
+    into l_blob, l_mime
+    from product_images
+   where id = :P100_ID;
+
+  owa_util.mime_header(l_mime, false);
+  htp.p('Content-length: ' || dbms_lob.getlength(l_blob));
+  htp.p('Content-Disposition: inline; filename="image_' || :P100_ID || '"');
+  htp.p('');
+  owa_util.http_header_close;
+
+  wpg_docload.download_file(l_blob);
+  apex_application.stop_apex_engine;
+end;
+
+6. Нажми Save и Run
+
+
+
+
+---
+
+5. Готово! Как использовать
+
+Теперь ты можешь вставлять в любой HTML, отчёт, карточку:
+
+<img src="f?p=112:100:::NO::P100_ID=1">
+
+Или формировать ссылку на изображение в SQL:
+
+select
+  id,
+  name,
+  'f?p=112:100:::NO::P100_ID=' || id as image_url
+from product_images;
+
+
+---
+
+6. (Опционально) Добавить колонку image_url в таблицу
+
+alter table product_images add (image_url varchar2(1000));
+
+И автоматически заполнять при вставке:
+
+create or replace trigger trg_image_url
+before insert or update on product_images
+for each row
+begin
+  :new.image_url := 'f?p=112:100:::NO::P100_ID=' || :new.id;
+end;
+
+
+---
+
+Проверка
+
+1. Вставь изображение в таблицу (можно через File Browse на другой форме)
+
+
+2. Перейди по ссылке:
+
+https://your-domain/ords/f?p=112:100:::NO::P100_ID=1
+
+(Заменить your-domain на свой)
+
+
+
+Изображение отобразится в браузере.
+
+
+---
+
+Хочешь дальше:
+
+Сделать страницу загрузки изображений?
+
+Или интерактивный отчёт с превью и ссылками?
+
+
+Готов продолжать шаг за шагом.
 

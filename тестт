@@ -1,99 +1,188 @@
-Отлично, ты всё сделал правильно — а эта ошибка "Protected by privilege" (красный крестик) говорит, что доступ к REST-модулю ограничен, и ты явно не указал привилегии или не отключил защиту.
+Отлично! С учётом, что у тебя Oracle APEX 23.1 + ORDS (вероятно 22.x или 23.x), давай напишу полную рабочую инструкцию с нуля, как:
+
+Хранить изображения в BLOB в таблице,
+
+Создать REST Endpoint без авторизации,
+
+Получить постоянные прямые URL, которые можно записывать в таблицу и использовать где угодно.
+
 
 
 ---
 
-Решение 1: Убрать защиту (для открытого доступа)
+Цель:
 
-Если ты хочешь, чтобы REST endpoint был публичным, без авторизации:
+Создать ссылку вида:
 
-Выполни:
+https://your-domain/ords/hr/images/42
+
+где 42 — ID изображения в таблице.
+
+
+---
+
+1. Таблица для изображений
+
+Создай таблицу, где хранятся изображения:
+
+create table product_images (
+  id         number generated always as identity primary key,
+  name       varchar2(255),
+  image_blob blob,
+  mime_type  varchar2(255),
+  image_url  varchar2(1000)
+);
+
+
+---
+
+2. Включи REST-доступ к схеме (один раз)
+
+begin
+  ords.enable_schema(
+    p_enabled             => true,
+    p_schema              => 'HR',  -- замени на свою схему
+    p_url_mapping_type    => 'BASE_PATH',
+    p_url_mapping_pattern => 'hr',
+    p_auto_rest_auth      => false
+  );
+end;
+
+Проверь результат:
+
+select * from user_ords_schemas where schema = 'HR';
+
+
+---
+
+3. Создай REST-модуль images
 
 begin
   ords.define_module(
-    p_module_name        => 'images',
-    p_base_path          => '/images/',
-    p_items_per_page     => 0,
-    p_status             => 'PUBLISHED',  -- важно
-    p_comments           => 'Public image module'
-  );
-end;
-
-Затем обнови шаблон, чтобы снять защиту:
-
-begin
-  ords.define_template(
     p_module_name    => 'images',
-    p_pattern        => ':id',
-    p_priority       => 0,
-    p_etag_type      => 'HASH',
-    p_etag_query     => null,
-    p_comments       => 'Get image by ID',
-    p_mimes_allowed  => null,
-    p_status         => 'PUBLISHED'  -- снять защиту
-  );
-end;
-
-Важно: При создании модуля и шаблона по умолчанию они защищены (p_status => 'PROTECTED').
-
-
----
-
-Решение 2: Добавить привилегию и выдать доступ
-
-Если тебе нужна авторизация, то:
-
-1. Создай привилегию:
-
-
-
-begin
-  ords.create_privilege(
-    p_privilege_name => 'read_images',
-    p_label          => 'Read Images',
-    p_description    => 'Allow access to product images',
-    p_method         => 'GET',
-    p_resource       => '/images/:id',
-    p_roles          => 'SQL Developer', -- или твоя роль
+    p_base_path      => '/images/',
+    p_items_per_page => 0,
     p_status         => 'PUBLISHED'
   );
 end;
 
-2. Назначь эту привилегию модулю:
 
+---
 
+4. Создай шаблон с параметром :id
 
 begin
-  ords.add_module_privilege(
-    p_module_name     => 'images',
-    p_privilege_name  => 'read_images'
+  ords.define_template(
+    p_module_name => 'images',
+    p_pattern     => ':id',
+    p_priority    => 0,
+    p_status      => 'PUBLISHED'
   );
 end;
 
-3. Убедись, что ты или приложение вызываешь endpoint с нужным токеном / ролью.
 
+---
+
+5. Создай handler (GET), который отдаёт изображение
+
+begin
+  ords.define_handler(
+    p_module_name   => 'images',
+    p_pattern       => ':id',
+    p_method        => 'GET',
+    p_source_type   => ords.source_type_plsql,
+    p_source        => q'[
+      declare
+        l_blob blob;
+        l_mime varchar2(255);
+      begin
+        select image_blob, mime_type
+          into l_blob, l_mime
+          from product_images
+         where id = :id;
+
+        owa_util.mime_header(l_mime, false);
+        htp.p('Content-length: ' || dbms_lob.getlength(l_blob));
+        htp.p('Content-Disposition: inline; filename="image_' || :id || '"');
+        htp.p('');
+        owa_util.http_header_close;
+
+        wpg_docload.download_file(l_blob);
+      end;
+    ]',
+    p_items_per_page => 0
+  );
+end;
+
+
+---
+
+6. Обновляй image_url при вставке или обновлении
+
+create or replace trigger trg_product_images_biu
+before insert or update on product_images
+for each row
+begin
+  :new.image_url := 'https://your-domain/ords/hr/images/' || :new.id;
+end;
+
+Важно:
+
+Замени your-domain на твой реальный домен (например: apex.mycompany.com)
+
+hr — это alias твоей схемы из шага 2
 
 
 
 ---
 
-Проверка статуса:
+7. Проверка
 
-Ты можешь посмотреть статус REST-модуля:
+Допустим, у тебя запись с id = 42.
 
-select name, status, uri_prefix
-from user_ords_modules
-where name = 'images';
+Перейди по ссылке:
 
-Если status = PROTECTED — нужен токен или отключай защиту, как выше.
+https://your-domain/ords/hr/images/42
 
+Изображение должно загрузиться напрямую без логина. Если не работает — проверь статус схемы и модулей:
 
----
-
-Вывод:
+select module_name, status from user_ords_modules;
+select schema, enabled from user_ords_schemas;
 
 
 ---
 
-Хочешь, я сгенерирую рабочий CREATE OR REPLACE блок для всей конфигурации с открытым доступом?
+8. (Опционально) Вставка тестовых данных
+
+Если хочешь вставить тестовое изображение:
+
+declare
+  l_bfile  bfile := bfilename('DOCUMENTS', 'image.jpg'); -- файл в директории
+  l_blob   blob;
+begin
+  dbms_lob.open(l_bfile, dbms_lob.lob_readonly);
+  dbms_lob.createtemporary(l_blob, true);
+  dbms_lob.loadfromfile(l_blob, l_bfile, dbms_lob.getlength(l_bfile));
+  dbms_lob.close(l_bfile);
+
+  insert into product_images (name, image_blob, mime_type)
+  values ('Test Image', l_blob, 'image/jpeg');
+end;
+
+
+---
+
+Итог:
+
+product_images содержит image_url
+
+REST endpoint работает по постоянному URL
+
+Никакой APEX-сессии, токена, или f?p=... — просто и чисто
+
+
+
+---
+
+Хочешь — сгенерирую пакет, который упростит вставку изображений и обновление ссылок. Или показать, как защитить этот endpoint через OAuth2?
 

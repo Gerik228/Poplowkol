@@ -1,186 +1,85 @@
-Отлично, давай сделаем всё вручную с нуля в APEX, чтобы ты точно понял, как это работает и мог повторить в любом приложении.
+Отлично, давай разберёмся конкретно и точно.
 
 
 ---
 
-Цель:
+Ты видишь ошибку, потому что используешь PL/SQL функцию apex_util.get_blob_file_src в SQL.
 
-Показ изображений, хранящихся в таблице (в виде BLOB), только внутри одного APEX-приложения.
-Изображения будут доступны по ссылке:
-
-f?p=112:100:::NO::P100_ID=<ID>
+Эта функция не поддерживается в SQL напрямую, только в PL/SQL (например, в Dynamic Action, Process или Function Returning SQL Query).
 
 
 ---
 
-Полная инструкция по шагам (для APEX 23.1)
-
-1. Создай таблицу для изображений
-
-Если ещё не создана:
-
-create table product_images (
-  id         number generated always as identity primary key,
-  name       varchar2(255),
-  image_blob blob,
-  mime_type  varchar2(255)
-);
-
-Можно добавить записи через форму или вручную. Главное — заполнить image_blob и mime_type (image/jpeg, image/png и т.п.).
-
-
----
-
-2. Создай страницу-хендлер (стр. 100)
-
-В APEX Builder:
-
-1. Открой App Builder → выбери приложение 112
-
-
-2. Нажми Create > Page
-
-
-3. Тип страницы: Blank Page
-
-
-4. Page Number: 100
-
-
-5. Имя: Get Image
-
-
-6. Finish
-
-
-
-
----
-
-3. Добавь hidden item P100_ID
-
-В Page Designer:
-
-1. В левой части, Items → +
-
-
-2. Тип: Hidden
-
-
-3. Имя: P100_ID
-
-
-4. Source Type: Always, replacing any existing value in session state
-
-
-5. Save
-
-
-
-
----
-
-4. Добавь PL/SQL-процесс, который отдаёт изображение
-
-1. В разделе Processing → +
-
-
-2. Тип: PL/SQL
-
-
-3. Имя: Download Image
-
-
-4. Execution Point: Before Header
-
-
-5. Код:
-
-
-
-declare
-  l_blob blob;
-  l_mime varchar2(255);
-begin
-  select image_blob, mime_type
-    into l_blob, l_mime
-    from product_images
-   where id = :P100_ID;
-
-  owa_util.mime_header(l_mime, false);
-  htp.p('Content-length: ' || dbms_lob.getlength(l_blob));
-  htp.p('Content-Disposition: inline; filename="image_' || :P100_ID || '"');
-  htp.p('');
-  owa_util.http_header_close;
-
-  wpg_docload.download_file(l_blob);
-  apex_application.stop_apex_engine;
-end;
-
-6. Нажми Save и Run
-
-
-
-
----
-
-5. Готово! Как использовать
-
-Теперь ты можешь вставлять в любой HTML, отчёт, карточку:
-
-<img src="f?p=112:100:::NO::P100_ID=1">
-
-Или формировать ссылку на изображение в SQL:
+Правильный способ получить URL BLOB в SQL (и APEX 23.1 это поддерживает) — через виртуальную колонку с формированием URL вручную:
 
 select
-  id,
-  name,
-  'f?p=112:100:::NO::P100_ID=' || id as image_url
-from product_images;
+    id,
+    title,
+    description,
+    dbms_lob.getlength(image) as image_size,
+    'wwv_flow_file_mgr.get_file?p_security_group_id=' || apex_application.g_flow_security_group_id ||
+    '&p_fname=' || id || '_image' as image_url
+from news_test
+
+Но это костыль и требует настройки APEX для обслуживания BLOB через wwv_flow_file_mgr.
 
 
 ---
 
-6. (Опционально) Добавить колонку image_url в таблицу
+Рекомендуемый способ — использовать APEX автоматическую поддержку BLOB колонок в Report/Card/Region.
 
-alter table product_images add (image_url varchar2(1000));
+Если ты:
 
-И автоматически заполнять при вставке:
+Создаешь Interactive Report, Card, или Classic Report
 
-create or replace trigger trg_image_url
-before insert or update on product_images
-for each row
+И хочешь отображать изображение из BLOB
+
+
+Тогда не пиши SQL руками. Просто:
+
+1. Используй мастер создания региона (например, Cards)
+
+Укажи таблицу NEWS_TEST
+
+Укажи поле IMAGE как колонку с BLOB
+
+APEX сам подставит правильный apex_util.get_blob_file_src и сгенерирует URL за кулисами.
+
+
+2. Или создай отдельный Application Process (например, GETIMAGE)
+
+Сделай Process:
+
+declare
+    l_mime  varchar2(255);
+    l_blob  blob;
+    l_name  varchar2(200);
 begin
-  :new.image_url := 'f?p=112:100:::NO::P100_ID=' || :new.id;
+    select mime_type, image, filename
+    into l_mime, l_blob, l_name
+    from news_test
+    where id = :P5_ID;
+
+    sys.htp.init;
+    owa_util.mime_header(l_mime, false);
+    htp.p('Content-length: ' || dbms_lob.getlength(l_blob));
+    htp.p('Content-Disposition: filename="' || l_name || '"');
+    owa_util.http_header_close;
+    wpg_docload.download_file(l_blob);
+    apex_application.stop_apex_engine;
 end;
 
+И генерируй ссылку:
 
----
-
-Проверка
-
-1. Вставь изображение в таблицу (можно через File Browse на другой форме)
-
-
-2. Перейди по ссылке:
-
-https://your-domain/ords/f?p=112:100:::NO::P100_ID=1
-
-(Заменить your-domain на свой)
-
-
-
-Изображение отобразится в браузере.
+select
+    id,
+    title,
+    description,
+    'f?p=&APP_ID.:0:&SESSION.:APPLICATION_PROCESS=GETIMAGE:::P5_ID:' || id as image_url
+from news_test
 
 
 ---
 
-Хочешь дальше:
-
-Сделать страницу загрузки изображений?
-
-Или интерактивный отчёт с превью и ссылками?
-
-
-Готов продолжать шаг за шагом.
+Хочешь, я сделаю с нуля рабочий пример с твоей таблицей NEWS_TEST?
 

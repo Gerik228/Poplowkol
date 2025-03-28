@@ -1,13 +1,67 @@
-select 
-    id,
-    title,
-    description,
-    dbms_lob.getlength(image) as image_size,
-    mime_type,
-    filename,
-    apex_util.get_blob_file_src(
-        p_table_name => 'NEWS_TEST',
-        p_primary_key => id,
-        p_blob_column => 'IMAGE'
-    ) as image_url
-from news_test
+Отлично, ты уже очень близко — и я сразу вижу, в чём дело:
+
+
+---
+
+Ошибка PLS-00201: identifier 'ORDS.ENABLE_SCHEMA_OBJECT' must be declared
+
+Означает: в твоей схеме нет доступа к пакету ORDS или он не установлен.
+
+
+---
+
+Проверка 1: Установлен ли ORDS вообще?
+
+Выполни:
+
+select object_name
+from all_objects
+where object_name like 'ORDS%' and object_type = 'PACKAGE';
+
+Если ничего не вернёт — значит, ORDS не установлен или ты работаешь в схеме, где он не доступен.
+
+
+---
+
+Проверка 2: Доступен ли старый способ через user_objects
+
+Попробуй эту простую команду — если работает, значит ORDS активен:
+
+select * from user_rest_enabled_objects where object_name = 'PRODUCT_IMAGES';
+
+
+---
+
+Что делать, если ORDS не доступен?
+
+1. Убедись, что ты работаешь:
+
+В APEX, развернутом через ORDS (не embedded PL/SQL gateway).
+
+В схеме, которая подключена к ORDS.
+
+
+
+2. Попробуй включить REST доступ через GUI:
+
+Открой APEX SQL Workshop > RESTful Services
+
+Нажми "Enable Object"
+
+Найди PRODUCT_IMAGES, и включи её
+
+
+
+
+
+---
+
+Альтернатива: создать ручной REST endpoint для BLOB
+
+Если ORDS нельзя включить автоматически, я могу помочь тебе создать REST Module вручную, чтобы получить ссылку на BLOB через PL/SQL.
+
+
+---
+
+Хочешь — я покажу, как это сделать вручную через ORDS REST Module?
+

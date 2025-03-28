@@ -1,3 +1,23 @@
+declare
+    l_blob      blob;
+    l_mime      varchar2(255);
+    l_filename  varchar2(255);
+begin
+    select image_blob, mime_type, file_name
+    into l_blob, l_mime, l_filename
+    from product_images
+    where id = :id;
+
+    owa_util.mime_header(l_mime, false);
+    htp.p('Content-Disposition: inline; filename="' || l_filename || '"');
+    owa_util.http_header_close;
+    wpg_docload.download_file(l_blob);
+    
+    apex_application.stop_apex_engine;
+end;
+
+
+
 Отличные новости — ORDS установлен и работает!
 Теперь мы можем на 100% точно создать рабочий REST endpoint вручную, чтобы отдавать BLOB через ссылку.
 

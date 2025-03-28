@@ -12,8 +12,6 @@ begin
     htp.p('Content-Disposition: inline; filename="' || l_filename || '"');
     owa_util.http_header_close;
     wpg_docload.download_file(l_blob);
-    
-    apex_application.stop_apex_engine;
 end;
 
 

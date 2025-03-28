@@ -1,3 +1,8 @@
+begin
+    htp.p('Hello! You requested image ID: ' || :id);
+end;
+
+
 declare
     l_blob      blob;
     l_mime      varchar2(255);

@@ -1,295 +1,76 @@
-DECLARE
-  l_success BOOLEAN;
-BEGIN
-  l_success := pst_utils.check_ldap_auth(:P9999_USERNAME, :P9999_PASSWORD);
-
-  IF l_success THEN
-    -- Успешная аутентификация
-    apex_util.set_authentication_result(0);
-    apex_util.set_session_state('APP_USER', :P9999_USERNAME);
-    apex_util.redirect_url('f?p=' || :APP_ID || ':1:' || :APP_SESSION);
-  ELSE
-    -- Ошибка входа
-    apex_util.set_authentication_result(1);
-    apex_util.set_session_state('P9999_MESSAGE', 'Неверный логин или пароль');
-    apex_util.redirect_url('f?p=' || :APP_ID || ':9999:' || :APP_SESSION);
-  END IF;
-END;
-
-
-DECLARE
-  l_success BOOLEAN;
-BEGIN
-  -- Вызов вашей функции проверки учетных данных
-  l_success := pst_utils.check_ldap_auth(:P9999_USERNAME, :P9999_PASSWORD);
-
-  IF l_success THEN
-    -- Установка результата аутентификации
-    APEX_UTIL.SET_AUTHENTICATION_RESULT(0);
-    -- Перенаправление на главную страницу приложения
-    APEX_UTIL.REDIRECT_URL('f?p=' || :APP_ID || ':1:' || :APP_SESSION);
-  ELSE
-    -- Установка результата аутентификации с кодом ошибки
-    APEX_UTIL.SET_AUTHENTICATION_RESULT(-1);
-    -- Вывод сообщения об ошибке
-    APEX_UTIL.SET_CUSTOM_AUTH_STATUS('Неверное имя пользователя или пароль.');
-    -- Перенаправление обратно на страницу входа
-    APEX_UTIL.REDIRECT_URL('f?p=' || :APP_ID || ':9999:' || :APP_SESSION);
-  END IF;
-END;
-
-
-Ошибка ORA-06550: line 9, column X указывает на синтаксическую ошибку в PL/SQL, чаще всего — из-за неправильного вызова процедуры или функции.
+Отлично, ты уже на финишной прямой!
+Ссылка формируется, но при переходе по ней ошибка — значит, ORDS не может отдать IMAGE_BLOB, и мы это сейчас быстро решим.
 
 
 ---
 
-Что нужно проверить:
+Проверь шаг за шагом — почему BLOB по ссылке не отдается:
 
-1. Форма вызова apex_authentication.login
+1. Таблица действительно включена в ORDS?
 
-Ты должен вызывать её позиционно, а не с =>.
+Выполни:
 
-Вот правильный шаблон:
+select *
+from user_rest_enabled_objects
+where object_name = 'PRODUCT_IMAGES';
 
-apex_authentication.login('USERNAME', NULL, 'APP_ID:PAGE_ID');
+Если нет строк — значит, таблица не опубликована как REST объект.
 
-или если из переменных:
-
-apex_authentication.login(:P9999_USERNAME, NULL, '1');
-
-
----
-
-2. Проверка кода на странице
-
-Полный пример кода на странице 9999, в PL/SQL Process → After Header:
-
-declare
-  l_success boolean;
-begin
-  l_success := pst_utils.check_ldap_auth(:P9999_USERNAME, :P9999_PASSWORD);
-
-  if l_success then
-    apex_authentication.login(:P9999_USERNAME, NULL, '1');
-  else
-    apex_util.set_session_state('P9999_MESSAGE', 'Неверный логин или пароль');
-    apex_util.redirect_url('f?p=&APP_ID.:9999');
-  end if;
-end;
+Если есть — посмотри колонку OBJECT_ALIAS — это будет часть URL.
 
 
 ---
 
-3. Убедись, что переменные P9999_USERNAME и P9999_PASSWORD существуют
+2. Проверь ссылку вручную
 
-Они должны быть page items на странице 9999.
+Попробуй в браузере:
 
-Тип может быть Hidden или Text Field.
+https://your-domain/ords/WEB_RND/product_images/
 
-Доступ к session state — Unrestricted или Checksum Required.
+Если ты видишь JSON — значит, ORDS работает. Теперь попробуй:
 
+https://your-domain/ords/WEB_RND/product_images/1/image_blob
 
-
----
-
-Если хочешь — можешь прислать код полностью (лучше в виде текстового блока), и я точно укажу, где проблема. Или сделаю экспорт/скрипт этой страницы.
-
-
-
-
-
-Отлично! Сейчас дам тебе подробную пошаговую инструкцию, как реализовать SSO-авторизацию в Oracle APEX через LDAP (AD) с использованием твоей функции check_ldap_auth. Эта реализация будет работать без стандартной страницы входа, автоматически логинивая пользователя при успешной проверке.
+(где 1 — реальный ID, у которого есть не-null IMAGE_BLOB)
 
 
 ---
 
-Общая идея
+3. Убедись, что поле IMAGE_BLOB не пустое
 
-1. Пользователь переходит по ссылке на специальную страницу APEX (например, /f?p=100:9999).
+select id, dbms_lob.getlength(image_blob)
+from product_images
+where image_blob is not null;
 
-
-2. Эта страница получает логин/пароль (например, через P9999_USERNAME и P9999_PASSWORD).
-
-
-3. Процесс вызывает check_ldap_auth.
-
-
-4. Если авторизация успешна — вызывается apex_authentication.login(...).
-
-
-5. Пользователь попадает в приложение уже авторизованным.
-
-
-6. (Опционально) можно использовать cookie или HTTP header, чтобы логинить без пароля.
-
-
+Если длина 0 — ORDS отдаст ошибку, потому что BLOB пуст.
 
 
 ---
 
-Шаги
+4. Проверь права на таблицу
 
-1. Создай PL/SQL функцию для авторизации
+ORDS должен видеть таблицу. Выполни:
 
-Ты уже сделал:
+grant select on product_images to apex_public_user;
 
-FUNCTION check_ldap_auth(p_username IN VARCHAR2, p_password IN VARCHAR2) RETURN BOOLEAN IS
-  l_session DBMS_LDAP.SESSION;
-  l_retval  PLS_INTEGER;
-  res       BOOLEAN;
-BEGIN
-  BEGIN
-    l_session := DBMS_LDAP.init('vld-ads01.pskb.ad', 389);
-    l_retval := DBMS_LDAP.simple_bind_s(l_session, 'pskb\' || p_username, p_password);
-    res := TRUE;
-  EXCEPTION
-    WHEN OTHERS THEN
-      res := FALSE;
-  END;
-  RETURN res;
-END;
-
-Убедись, что:
-
-У пользователя APEX_xxxxx есть права на DBMS_LDAP (через GRANT EXECUTE ON dbms_ldap TO APEX_xxxx;).
-
-Порт 389 открыт из базы до контроллера домена.
-
+И перезапусти ORDS (если это локальный сервер). В APEX это не всегда нужно.
 
 
 ---
 
-2. Создай специальную страницу в APEX (например, 9999)
+5. Убедись, что ORDS правильно настроен отдавать BLOB
 
-Тип: Blank Page
+ORDS должен сам сгенерировать REST endpoint, который умеет отдавать IMAGE_BLOB:
 
-Название: SSO Login
-
-Убери навигацию и боковую панель.
+/product_images/{id}/image_blob
 
 
-Добавь два Hidden Page Items:
-
-P9999_USERNAME
-
-P9999_PASSWORD
-
-
-(или P9999_TOKEN, если будешь передавать по cookie/токену)
+Если не сработало — можно создать ручной REST-ресурс, который отдаёт BLOB через PL/SQL.
 
 
 ---
 
-3. Добавь PL/SQL-процесс на эту страницу
+Хочешь, я покажу, как вручную создать RESTful endpoint для изображения через ORDS?
 
-> В Page Designer → Processing → Create → PL/SQL Code → After Header
-
-
-
-declare
-  l_success boolean;
-begin
-  -- Проверяем логин/пароль через AD
-  l_success := check_ldap_auth(:P9999_USERNAME, :P9999_PASSWORD);
-
-  if l_success then
-    -- Авторизуем пользователя в APEX
-    apex_authentication.login(
-      p_username => :P9999_USERNAME,
-      p_password => null,
-      p_app_page => '1' -- стартовая страница
-    );
-  else
-    -- Ошибка: возврат на ту же страницу с сообщением
-    apex_util.set_session_state('P9999_MESSAGE', 'Неверный логин или пароль');
-    apex_util.redirect_url('f?p=&APP_ID.:9999');
-  end if;
-end;
-
-
----
-
-4. Измени Authentication Scheme в APEX
-
-> Shared Components → Authentication Schemes → Create → From Scratch
-
-
-
-Название: LDAP Custom
-
-Scheme Type: Custom
-
-Login Processing Page: 9999
-
-Post-Login URL: f?p=&APP_ID.:1:
-
-
-Нажми "Make Current" — чтобы включить эту схему.
-
-
----
-
-5. (Опционально) Добавь форму логина
-
-Если хочешь всё же оставить форму:
-
-На странице 9999 создай Text Field → P9999_USERNAME
-
-Password field → P9999_PASSWORD
-
-Submit button
-
-При нажатии кнопки вызывается твой процесс
-
-
-
----
-
-6. (Дополнительно) Сделай авто-вход через cookie
-
-Установи cookie после успешного входа:
-
-owa_util.mime_header('text/html', FALSE);
-htp.p('Set-Cookie: SSO_USER=' || :P9999_USERNAME || '; path=/;');
-
-На будущих посещениях — создай страницу (например, 9998) с процессом:
-
-declare
-  v_username varchar2(100);
-begin
-  v_username := owa_util.get_cgi_env('HTTP_COOKIE');
-
-  if instr(v_username, 'SSO_USER=') > 0 then
-    v_username := regexp_substr(v_username, 'SSO_USER=([^;]+)', 1, 1, NULL, 1);
-
-    apex_authentication.login(
-      p_username => v_username,
-      p_password => null,
-      p_app_page => '1'
-    );
-  else
-    apex_util.redirect_url('f?p=&APP_ID.:9999');
-  end if;
-end;
-
-
----
-
-Как протестировать:
-
-1. Перейди по ссылке:
-f?p=100:9999:::::P9999_USERNAME,P9999_PASSWORD:ivanov,MyPassword123
-
-
-2. Если логин и пароль валидны — APEX создаст сессию и отправит на страницу 1.
-
-
-
-
----
-
-Если хочешь использовать авто-вход по токену, Windows логину, или через SAML — можно и это. Но твой текущий подход уже мощный.
-
-Хочешь — сделаю тебе export-шаблон страницы 9999?
+Это 100% рабочий вариант, если автоматическое REST-включение не отдает BLOB.
 

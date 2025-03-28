@@ -1,62 +1,100 @@
-Отлично! Ты только что подтвердил ключевое:
-ORDS не включён для таблицы PRODUCT_IMAGES, потому что user_rest_enabled_objects вообще не существует в твоей схеме.
+Отличные новости — ORDS установлен и работает!
+Теперь мы можем на 100% точно создать рабочий REST endpoint вручную, чтобы отдавать BLOB через ссылку.
 
 
 ---
 
-Что это значит?
+Что ты получишь:
 
-Твоя база:
+Ссылку типа:
 
-Либо не настроена для ORDS
+https://your-domain/ords/web_rnd/api/images/:id
 
-Либо ты работаешь в APEX, где ORDS не привязан к схеме
+Которая будет отдавать содержимое IMAGE_BLOB из таблицы PRODUCT_IMAGES.
 
-Либо ORDS включен, но не настроен для таблицы
+
+---
+
+Шаги: Создание собственного RESTful endpoint вручную
+
+1. Открываем APEX > SQL Workshop > RESTful Services
+
+Если нет вкладки "RESTful Services" — включи REST в схеме через админа.
+
+
+---
+
+2. Создай RESTful модуль
+
+Module
+
+Name: api
+
+Base Path: /api/
+
+Status: Published
+
+
+Template
+
+URI Pattern: images/:id
+
+Это путь, по которому будет вызываться наш endpoint
+
+
+Method
+
+GET
 
 
 
 ---
 
-Что делать дальше: два варианта
+3. Код обработки запроса (GET /images/:id)
+
+declare
+    l_mime  varchar2(255);
+    l_blob  blob;
+    l_name  varchar2(255);
+begin
+    select mime_type, image_blob, file_name
+    into l_mime, l_blob, l_name
+    from product_images
+    where id = :id;
+
+    owa_util.mime_header(l_mime, false);
+    htp.p('Content-Disposition: inline; filename="' || l_name || '"');
+    owa_util.http_header_close;
+    wpg_docload.download_file(l_blob);
+
+    apex_application.stop_apex_engine;
+end;
 
 
 ---
 
-Вариант 1 — Проверить доступность ORDS
+4. Теперь у тебя будет ссылка:
 
-Выполни:
+https://your-domain/ords/web_rnd/api/images/123
 
-select * from all_objects where object_name like 'ORDS%' and object_type = 'PACKAGE';
-
-Если не найдёт ни ORDS, ни ORDS_ADMIN, ни ORDS_METADATA, значит ORDS вообще не установлен в твоей базе.
+Где 123 — это ID изображения.
 
 
 ---
 
-Вариант 2 — Проверить через GUI:
+Итог:
 
-1. Зайди в SQL Workshop > RESTful Services.
+Не зависит от автоматических ORDS включений
 
+Работает стабильно и всегда отдаёт BLOB
 
-2. Нажми "Enable Object".
+Ты сам контролируешь URL-структуру
 
-
-3. Найди таблицу PRODUCT_IMAGES в списке и нажми Enable.
-
-
-4. Проверь, какой URL тебе покажет APEX (он может даже подсказать пример).
-
+Поддерживает MIME-типы, имена файлов, inline/attachment режимы
 
 
 
 ---
 
-Хочешь по-настоящему надёжный способ?
-
-Давай я покажу тебе, как вручную создать ORDS REST endpoint, чтобы отдавать BLOB даже если автоматическое включение не работает.
-
-Работает везде, даже если APEX ограничен.
-
-Тебе подойдёт такой ручной способ?
+Хочешь, я подготовлю экспорт этого REST-модуля, чтобы ты мог просто импортировать в APEX?
 

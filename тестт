@@ -1,3 +1,15 @@
+begin
+    ords.enable_schema_object(
+        p_schema             => 'YOUR_SCHEMA_NAME', -- в верхнем регистре
+        p_object             => 'PRODUCT_IMAGES',
+        p_object_type        => 'TABLE',
+        p_object_alias       => 'product_images',
+        p_auto_rest_auth     => false
+    );
+end;
+
+
+
 Отлично! Если хочешь постоянную ссылку через RESTful Web Service (REST/ORDS) для доступа к BLOB из таблицы PRODUCT_IMAGES — это реально и стабильно работает.
 
 Вот как сделать 100% рабочую схему через ORDS:

@@ -1,10 +1,20 @@
-Вот итоговый HTML-шаблон карточки и CSS-стили для использования в плагине Oracle APEX 23.1 с эффектной зелёной кнопкой и анимацией:
+Вот полностью готовый код для Oracle APEX 23.1 — плагин Template Component, реализующий:
+
+Горизонтальный список карточек.
+
+Эстетичный дизайн с изображением, заголовком, датой, описанием.
+
+Кнопку "Подробнее" с анимированным зелёным градиентом при наведении.
+
 
 
 ---
 
-HTML (Partial Template)
+1. HTML Partial Template
 
+Вставляется в атрибут p_partial_template:
+
+p_partial_template => q'!
 <div class="blog_post">
   <div class="img_pod">
     <img src="#IMAGE_URL#" alt="#TITLE#">
@@ -17,30 +27,41 @@ HTML (Partial Template)
       <a class="btn_primary" href="#READ_MORE#LINK_URL#" target="_blank">#READ_MORE#LABEL#</a>
     {endif/}
   </div>
-</div>
+</div>!'
 
 
 ---
 
-CSS (style/style.css)
+2. CSS (файл style.css)
+
+Загрузите в плагин через "Plugin Files":
 
 @import url("https://fonts.googleapis.com/css?family=Roboto:300,400,700&display=swap");
 
+.t-Region-body {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding: 1rem;
+  gap: 1.5rem;
+}
+
 .blog_post {
   background: #fff;
-  max-width: 500px;
-  margin: 1rem;
+  min-width: 320px;
+  max-width: 340px;
   border-radius: 10px;
-  box-shadow: 1px 1px 2rem rgba(0, 0, 0, 0.3);
-  position: relative;
+  box-shadow: 1px 1px 2rem rgba(0, 0, 0, 0.1);
   display: flex;
   flex-direction: row;
   align-items: center;
+  position: relative;
+  padding: 2rem;
   font-family: "Roboto", sans-serif;
 }
 
 .container_copy {
-  padding: 4rem 2rem;
+  padding-left: 2rem;
   flex: 1;
 }
 
@@ -48,13 +69,12 @@ CSS (style/style.css)
   height: 110px;
   width: 110px;
   background: linear-gradient(90deg, #a5d6a7, #66bb6a);
-  box-shadow: 1px 1px 2rem rgba(0, 0, 0, 0.3);
   border-radius: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-left: -3rem;
-  margin-right: 1rem;
+  flex-shrink: 0;
+  box-shadow: 1px 1px 2rem rgba(0, 0, 0, 0.3);
 }
 
 .blog_post img {
@@ -71,59 +91,68 @@ h3 {
 }
 
 h1 {
-  font-size: 2.2rem;
-  letter-spacing: 0.5px;
+  font-size: 2rem;
   color: #333;
   margin: 0 0 1rem 0;
 }
 
 p {
-  font-size: 1.2rem;
-  line-height: 1.45;
-  color: #333;
-  margin: 0 0 2rem 0;
+  font-size: 1rem;
+  line-height: 1.4;
+  color: #444;
+  margin: 0 0 1rem 0;
 }
 
 .btn_primary {
-  background: linear-gradient(270deg, #00c853, #b2ff59);
-  background-size: 400% 400%;
-  animation: gradientStatic 15s ease infinite;
-  padding: 1rem 1.5rem;
-  border-radius: 50px;
-  color: white;
-  font-size: 1.2rem;
-  text-decoration: none;
-  box-shadow: 1px 10px 2rem rgba(0, 200, 83, 0.4);
-  transition: all 0.5s ease-in-out;
   display: inline-block;
-  margin-top: 1.5rem;
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  color: white;
+  text-decoration: none;
+  border-radius: 50px;
+  background: linear-gradient(270deg, #00c853, #b2ff59);
+  background-size: 200% auto;
+  transition: background-position 0.8s ease-in-out, box-shadow 0.4s ease;
+  box-shadow: 0 4px 15px rgba(0, 200, 83, 0.4);
 }
 
 .btn_primary:hover {
-  animation: gradientShift 5s ease infinite;
-  box-shadow: 0px 5px 1rem rgba(0, 200, 83, 0.5);
-}
-
-@keyframes gradientStatic {
-  0% { background-position: 0% 50%; }
-  100% { background-position: 0% 50%; }
-}
-
-@keyframes gradientShift {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
+  background-position: right center;
+  box-shadow: 0 4px 20px rgba(0, 200, 83, 0.6);
 }
 
 
 ---
 
-Хочешь, чтобы я подготовил тебе:
+3. Необходимые атрибуты в плагине
 
-SQL скрипт плагина с этими вставками?
+Создай атрибуты COMPONENT типа:
 
-Или ты сам вставишь их в APEX интерфейсе?
+TITLE (обязателен)
+
+DESCRIPTION (обязателен)
+
+IMAGE_URL (обязателен)
+
+DATE (необязателен)
 
 
-Могу также подготовить zip с CSS, если планируешь загружать через "Plugin Files".
+А также REPORT-атрибут:
+
+READ_MORE (тип: LINK)
+
+
+
+---
+
+4. Рекомендации
+
+Используй Universal Theme, чтобы шрифты и стили органично вписывались.
+
+Размести регион с этим плагином в отдельной секции страницы с отключённым padding, если хочешь карточки по всей ширине.
+
+Добавь CSS как Plugin File или в inline-стиль страницы.
+
+
+Хочешь — могу собрать тебе .sql или .zip для загрузки плагина напрямую в APEX. Готов сделать?
 

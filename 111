@@ -1,48 +1,129 @@
-$('#main').removeClass('t-Body-mainContent');
-$('.t-Body-contentInner').removeClass('t-Body-contentInner');
-$('#t_PageBody').width("100%");
+Вот итоговый HTML-шаблон карточки и CSS-стили для использования в плагине Oracle APEX 23.1 с эффектной зелёной кнопкой и анимацией:
 
 
+---
+
+HTML (Partial Template)
+
+<div class="blog_post">
+  <div class="img_pod">
+    <img src="#IMAGE_URL#" alt="#TITLE#">
+  </div>
+  <div class="container_copy">
+    <h3>#DATE#</h3>
+    <h1>#TITLE#</h1>
+    <p>#DESCRIPTION#</p>
+    {if READ_MORE/}
+      <a class="btn_primary" href="#READ_MORE#LINK_URL#" target="_blank">#READ_MORE#LABEL#</a>
+    {endif/}
+  </div>
+</div>
 
 
-.t-Body-contentInner {padding: 0;}
-.t-Region {margin:0px;border: 0;}
-#t_Footer {display: none;}
-#t_Body_title {padding: 0;display: none;}
-.t-Report-colHead {background-color: transparent;}
+---
 
-.t-PageBody {
-    background: none;
+CSS (style/style.css)
+
+@import url("https://fonts.googleapis.com/css?family=Roboto:300,400,700&display=swap");
+
+.blog_post {
+  background: #fff;
+  max-width: 500px;
+  margin: 1rem;
+  border-radius: 10px;
+  box-shadow: 1px 1px 2rem rgba(0, 0, 0, 0.3);
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  font-family: "Roboto", sans-serif;
 }
 
-html {
-    background: url(#APP_FILES#game2048bg.jpg) no-repeat center center fixed;
+.container_copy {
+  padding: 4rem 2rem;
+  flex: 1;
 }
 
-.rw-pillar--neutral.rw-mode-body--dark, bodybody:not([class*=rw-pillar--]).rw-mode-body--dark {
-    background-image: none;
+.img_pod {
+  height: 110px;
+  width: 110px;
+  background: linear-gradient(90deg, #a5d6a7, #66bb6a);
+  box-shadow: 1px 1px 2rem rgba(0, 0, 0, 0.3);
+  border-radius: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: -3rem;
+  margin-right: 1rem;
 }
 
-#P2048_PLAYERNAME
-{
-    border: none !important;
-    background: transparent !important;
-    outline: none !important;
-    color: white;
+.blog_post img {
+  height: 8.3rem;
+  width: 8.3rem;
+  border-radius: 100%;
+  box-shadow: 1px 1px 2rem rgba(0, 0, 0, 0.3);
 }
 
-.t-Report-cell {
-    color: white;
+h3 {
+  color: #999;
+  font-size: 1.25rem;
+  margin: 0 0 0.5rem 0;
 }
 
-.t-Report-colHead {
-    color: white;
+h1 {
+  font-size: 2.2rem;
+  letter-spacing: 0.5px;
+  color: #333;
+  margin: 0 0 1rem 0;
 }
 
-.t-Icon {
-    color: white;
+p {
+  font-size: 1.2rem;
+  line-height: 1.45;
+  color: #333;
+  margin: 0 0 2rem 0;
 }
 
-.pagination {
-    color: white;
+.btn_primary {
+  background: linear-gradient(270deg, #00c853, #b2ff59);
+  background-size: 400% 400%;
+  animation: gradientStatic 15s ease infinite;
+  padding: 1rem 1.5rem;
+  border-radius: 50px;
+  color: white;
+  font-size: 1.2rem;
+  text-decoration: none;
+  box-shadow: 1px 10px 2rem rgba(0, 200, 83, 0.4);
+  transition: all 0.5s ease-in-out;
+  display: inline-block;
+  margin-top: 1.5rem;
 }
+
+.btn_primary:hover {
+  animation: gradientShift 5s ease infinite;
+  box-shadow: 0px 5px 1rem rgba(0, 200, 83, 0.5);
+}
+
+@keyframes gradientStatic {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+
+---
+
+Хочешь, чтобы я подготовил тебе:
+
+SQL скрипт плагина с этими вставками?
+
+Или ты сам вставишь их в APEX интерфейсе?
+
+
+Могу также подготовить zip с CSS, если планируешь загружать через "Plugin Files".
+

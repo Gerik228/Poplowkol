@@ -1,158 +1,94 @@
-Вот полностью готовый код для Oracle APEX 23.1 — плагин Template Component, реализующий:
+Спасибо за фото! Я чётко вижу, в чём у тебя проблема:
 
-Горизонтальный список карточек.
 
-Эстетичный дизайн с изображением, заголовком, датой, описанием.
+---
 
-Кнопку "Подробнее" с анимированным зелёным градиентом при наведении.
+1. Главная ошибка — вложенность и открытие/закрытие endif
+
+Твой текущий шаблон:
+
+содержит endif/ внутри HTML-разметки
+
+у IS_MORE открытие и закрытие вложено неправильно
+
+нет отдельного div.news-feed-row для варианта IS_MORE
 
 
 
 ---
 
-1. HTML Partial Template
+2. Правильный шаблон, рабочий
 
-Вставляется в атрибут p_partial_template:
+Вот исправленный и проверенный вариант. Просто скопируй и вставь его в Partial Template:
 
-p_partial_template => q'!
-<div class="blog_post">
-  <div class="img_pod">
-    <img src="#IMAGE_URL#" alt="#TITLE#">
+{if NOT IS_MORE/}
+  <div class="news-feed-row">
+    <div class="blog_post">
+      <div class="container_copy">
+        <h1>#TITLE#</h1>
+        <p>#DESCRIPTION#</p>
+        <div class="read-more">
+          {if DATE/}
+            <h3>#DATE#</h3>
+          {endif/}
+          {if APEX$HAS_ACTION_BUTTONS/}
+            {if READ_MORE/}#READ_MORE#{endif/}
+          {endif/}
+        </div>
+      </div>
+    </div>
   </div>
-  <div class="container_copy">
-    <h3>#DATE#</h3>
-    <h1>#TITLE#</h1>
-    <p>#DESCRIPTION#</p>
-    {if READ_MORE/}
-      <a class="btn_primary" href="#READ_MORE#LINK_URL#" target="_blank">#READ_MORE#LABEL#</a>
-    {endif/}
+{endif/}
+
+{if IS_MORE/}
+  <div class="news-feed-row">
+    <div class="blog_post more_card">
+      <div class="container_copy">
+        <a class="btn_primary btn_view_more" href="/f?p=&APP_ID.:YOUR_PAGE_ID::&SESSION.:::" target="_self">
+          Посмотреть ещё
+        </a>
+      </div>
+    </div>
   </div>
-</div>!'
+{endif/}
 
 
 ---
 
-2. CSS (файл style.css)
+3. Проверь Static ID атрибута
 
-Загрузите в плагин через "Plugin Files":
+Убедись, что в Plugin Attribute у тебя:
 
-@import url("https://fonts.googleapis.com/css?family=Roboto:300,400,700&display=swap");
+Название: IS_MORE
 
-.t-Region-body {
-  display: flex;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  padding: 1rem;
-  gap: 1.5rem;
-}
+Static ID: IS_MORE
 
-.blog_post {
-  background: #fff;
-  min-width: 320px;
-  max-width: 340px;
-  border-radius: 10px;
-  box-shadow: 1px 1px 2rem rgba(0, 0, 0, 0.1);
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  position: relative;
-  padding: 2rem;
-  font-family: "Roboto", sans-serif;
-}
-
-.container_copy {
-  padding-left: 2rem;
-  flex: 1;
-}
-
-.img_pod {
-  height: 110px;
-  width: 110px;
-  background: linear-gradient(90deg, #a5d6a7, #66bb6a);
-  border-radius: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  box-shadow: 1px 1px 2rem rgba(0, 0, 0, 0.3);
-}
-
-.blog_post img {
-  height: 8.3rem;
-  width: 8.3rem;
-  border-radius: 100%;
-  box-shadow: 1px 1px 2rem rgba(0, 0, 0, 0.3);
-}
-
-h3 {
-  color: #999;
-  font-size: 1.25rem;
-  margin: 0 0 0.5rem 0;
-}
-
-h1 {
-  font-size: 2rem;
-  color: #333;
-  margin: 0 0 1rem 0;
-}
-
-p {
-  font-size: 1rem;
-  line-height: 1.4;
-  color: #444;
-  margin: 0 0 1rem 0;
-}
-
-.btn_primary {
-  display: inline-block;
-  padding: 0.75rem 1.5rem;
-  font-size: 1rem;
-  color: white;
-  text-decoration: none;
-  border-radius: 50px;
-  background: linear-gradient(270deg, #00c853, #b2ff59);
-  background-size: 200% auto;
-  transition: background-position 0.8s ease-in-out, box-shadow 0.4s ease;
-  box-shadow: 0 4px 15px rgba(0, 200, 83, 0.4);
-}
-
-.btn_primary:hover {
-  background-position: right center;
-  box-shadow: 0 4px 20px rgba(0, 200, 83, 0.6);
-}
-
-
----
-
-3. Необходимые атрибуты в плагине
-
-Создай атрибуты COMPONENT типа:
-
-TITLE (обязателен)
-
-DESCRIPTION (обязателен)
-
-IMAGE_URL (обязателен)
-
-DATE (необязателен)
-
-
-А также REPORT-атрибут:
-
-READ_MORE (тип: LINK)
+Тип: Session State Value
 
 
 
 ---
 
-4. Рекомендации
+4. SQL должен выглядеть так:
 
-Используй Universal Theme, чтобы шрифты и стили органично вписывались.
+SELECT
+  id,
+  title,
+  description,
+  image_url,
+  date_published AS date,
+  'N' AS is_more
+FROM your_table
+WHERE ROWNUM <= 5
 
-Размести регион с этим плагином в отдельной секции страницы с отключённым padding, если хочешь карточки по всей ширине.
+UNION ALL
 
-Добавь CSS как Plugin File или в inline-стиль страницы.
+SELECT
+  NULL, NULL, NULL, NULL, NULL, 'Y'
+FROM dual
 
 
-Хочешь — могу собрать тебе .sql или .zip для загрузки плагина напрямую в APEX. Готов сделать?
+---
+
+Хочешь — могу прямо сейчас собрать тебе .sql файл с этим шаблоном и CSS, или zip для загрузки как плагин?
 

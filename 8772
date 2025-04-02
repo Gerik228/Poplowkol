@@ -1,59 +1,47 @@
 (function () {
-  const track = document.querySelector('.carousel-track');
-  const left = document.querySelector('.carousel-arrow.left');
-  const right = document.querySelector('.carousel-arrow.right');
-  let cards = track.querySelectorAll('.carousel-card');
-  let index = 0;
+  document.addEventListener("DOMContentLoaded", function () {
+    document.querySelectorAll(".carousel-wrapper").forEach(function (wrapper) {
+      const track = wrapper.querySelector(".carousel-track");
+      const left = wrapper.querySelector(".carousel-arrow.left");
+      const right = wrapper.querySelector(".carousel-arrow.right");
+      let cards = wrapper.querySelectorAll(".carousel-card");
+      let index = 0;
 
-  function getPerPage() {
-    const width = window.innerWidth;
-    if (width >= 900) return 3;
-    if (width >= 600) return 2;
-    return 1;
-  }
+      function getPerPage() {
+        const width = window.innerWidth;
+        if (width >= 900) return 3;
+        if (width >= 600) return 2;
+        return 1;
+      }
 
-  function updateCarousel() {
-    const perPage = getPerPage();
-    const offset = index * (100 / perPage);
-    track.style.transform = `translateX(-${offset}%)`;
-    updateButtons();
-  }
+      function update() {
+        const perPage = getPerPage();
+        const offset = index * (100 / perPage);
+        track.style.transform = `translateX(-${offset}%)`;
+        const maxIndex = Math.ceil(cards.length / perPage) - 1;
 
-  function updateButtons() {
-    const perPage = getPerPage();
-    const maxIndex = Math.ceil(cards.length / perPage) - 1;
-    left.style.visibility = index === 0 ? 'hidden' : 'visible';
-    right.style.visibility = index >= maxIndex ? 'hidden' : 'visible';
-  }
+        left.style.visibility = index === 0 ? 'hidden' : 'visible';
+        right.style.visibility = index >= maxIndex ? 'hidden' : 'visible';
+      }
 
-  function setup() {
-    cards = track.querySelectorAll('.carousel-card');
-    index = 0;
-    updateCarousel();
-  }
+      left.addEventListener("click", () => {
+        const perPage = getPerPage();
+        const maxIndex = Math.ceil(cards.length / perPage) - 1;
+        if (index < maxIndex) index++;
+        update();
+      });
 
-  right.addEventListener('click', () => {
-    const perPage = getPerPage();
-    const maxIndex = Math.ceil(cards.length / perPage) - 1;
-    if (index < maxIndex) {
-      index++;
-      updateCarousel();
-    }
+      right.addEventListener("click", () => {
+        if (index > 0) index--;
+        update();
+      });
+
+      window.addEventListener("resize", () => {
+        index = 0;
+        update();
+      });
+
+      setTimeout(update, 150);
+    });
   });
-
-  left.addEventListener('click', () => {
-    if (index > 0) {
-      index--;
-      updateCarousel();
-    }
-  });
-
-  window.addEventListener('resize', () => {
-    index = 0;
-    updateCarousel();
-  });
-
-  // Подождать, пока DOM полностью отрендерится (включая APEX)
-  setTimeout(setup, 100); // можно увеличить до 300 если нужно
-
 })();

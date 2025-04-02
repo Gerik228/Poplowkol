@@ -1,94 +1,113 @@
-Спасибо за фото! Я чётко вижу, в чём у тебя проблема:
+Чтобы сделать адаптивную пагинацию в плагине APEX (например, Template Component), которая будет автоматически подстраиваться под ширину окна, мы можем применить стратегию динамического ограничения количества видимых карточек, а при превышении — показывать кнопку "Далее" или скрывать лишние элементы.
 
 
 ---
 
-1. Главная ошибка — вложенность и открытие/закрытие endif
+Пошаговое решение: адаптивная пагинация без перезагрузки страницы
 
-Твой текущий шаблон:
+1. HTML-структура (Report Body):
 
-содержит endif/ внутри HTML-разметки
+<div class="cards-container">
+  <ul id="news-list">#APEX$ROWS#</ul>
+  <div id="pagination-controls"></div>
+</div>
 
-у IS_MORE открытие и закрытие вложено неправильно
+2. CSS (адаптивное отображение):
 
-нет отдельного div.news-feed-row для варианта IS_MORE
+.cards-container ul {
+  display: flex;
+  overflow-x: auto;
+  padding: 0;
+  gap: 1rem;
+  scroll-behavior: smooth;
+  list-style-type: none;
+}
+
+.cards-container li {
+  flex: 0 0 auto;
+  min-width: 280px;
+  max-width: 340px;
+}
+
+
+---
+
+3. JS-логика пагинации (через динамическое действие или внизу страницы):
+
+(function() {
+  const container = document.getElementById("news-list");
+  const items = container.querySelectorAll("li");
+  const perPage = calculateItemsPerPage();
+  let currentPage = 0;
+
+  function calculateItemsPerPage() {
+    const width = window.innerWidth;
+    if (width < 600) return 1;
+    if (width < 900) return 2;
+    if (width < 1200) return 3;
+    return 4;
+  }
+
+  function showPage(page) {
+    const start = page * perPage;
+    const end = start + perPage;
+    items.forEach((el, idx) => {
+      el.style.display = idx >= start && idx < end ? "flex" : "none";
+    });
+  }
+
+  function renderControls() {
+    const totalPages = Math.ceil(items.length / perPage);
+    const controls = document.getElementById("pagination-controls");
+    controls.innerHTML = "";
+    for (let i = 0; i < totalPages; i++) {
+      const btn = document.createElement("button");
+      btn.textContent = i + 1;
+      btn.onclick = () => {
+        currentPage = i;
+        showPage(currentPage);
+      };
+      controls.appendChild(btn);
+    }
+  }
+
+  window.addEventListener("resize", () => {
+    const newPerPage = calculateItemsPerPage();
+    if (newPerPage !== perPage) {
+      currentPage = 0;
+      showPage(currentPage);
+      renderControls();
+    }
+  });
+
+  showPage(currentPage);
+  renderControls();
+})();
+
+
+---
+
+4. Подключение в APEX:
+
+В "File URLs to Load" подключи .js, если внешний файл.
+
+Или вставь JS в нижнюю часть страницы в разделе "Function and Global Variable Declaration" или "Execute when Page Loads".
 
 
 
 ---
 
-2. Правильный шаблон, рабочий
+Что это даёт:
 
-Вот исправленный и проверенный вариант. Просто скопируй и вставь его в Partial Template:
+Количество карточек меняется в зависимости от ширины экрана.
 
-{if NOT IS_MORE/}
-  <div class="news-feed-row">
-    <div class="blog_post">
-      <div class="container_copy">
-        <h1>#TITLE#</h1>
-        <p>#DESCRIPTION#</p>
-        <div class="read-more">
-          {if DATE/}
-            <h3>#DATE#</h3>
-          {endif/}
-          {if APEX$HAS_ACTION_BUTTONS/}
-            {if READ_MORE/}#READ_MORE#{endif/}
-          {endif/}
-        </div>
-      </div>
-    </div>
-  </div>
-{endif/}
+Работает в одном регионе APEX без перезагрузки.
 
-{if IS_MORE/}
-  <div class="news-feed-row">
-    <div class="blog_post more_card">
-      <div class="container_copy">
-        <a class="btn_primary btn_view_more" href="/f?p=&APP_ID.:YOUR_PAGE_ID::&SESSION.:::" target="_self">
-          Посмотреть ещё
-        </a>
-      </div>
-    </div>
-  </div>
-{endif/}
-
-
----
-
-3. Проверь Static ID атрибута
-
-Убедись, что в Plugin Attribute у тебя:
-
-Название: IS_MORE
-
-Static ID: IS_MORE
-
-Тип: Session State Value
+Удобно для UX: юзер не теряет контекст при переходе между карточками.
 
 
 
 ---
 
-4. SQL должен выглядеть так:
-
-SELECT
-  id,
-  title,
-  description,
-  image_url,
-  date_published AS date,
-  'N' AS is_more
-FROM your_table
-WHERE ROWNUM <= 5
-
-UNION ALL
-
-SELECT
-  NULL, NULL, NULL, NULL, NULL, 'Y'
-FROM dual
-
-
----
-
-Хочешь — могу прямо сейчас собрать тебе .sql файл с этим шаблоном и CSS, или zip для загрузки как плагин?
+Если хочешь, могу сделать тебе плагин с уже встроенной адаптивной пагинацией — с горизонтальным скроллом или кнопками. Хочешь попробовать?
 

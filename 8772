@@ -1,0 +1,148 @@
+Отлично, у тебя почти всё готово, и на фото видно, что карточки уже красиво оформлены — теперь осталось довести адаптивность и поведение стрелок до идеала.
+
+
+---
+
+Что ты хочешь (подтверждение по фото):
+
+Карточки в одну строку.
+
+Отображаются 3 карточки, при уменьшении экрана — 2 или 1.
+
+При клике по стрелкам — перелистываются по "страницам" карточек.
+
+Без "настоящей пагинации" снизу.
+
+
+
+---
+
+Готовое решение для этого UI:
+
+### 1. Report Body:
+
+<div class="carousel-container">
+  <button class="carousel-arrow left">&#10094;</button>
+  <ul class="carousel-track">#APEX$ROWS#</ul>
+  <button class="carousel-arrow right">&#10095;</button>
+</div>
+
+
+---
+
+### 2. Report Row:
+
+<li class="carousel-card">#APEX$PARTIAL#</li>
+
+
+---
+
+### 3. CSS:
+
+.carousel-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  overflow: hidden;
+}
+
+.carousel-track {
+  display: flex;
+  transition: transform 0.3s ease-in-out;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.carousel-card {
+  flex: 0 0 100%;
+  box-sizing: border-box;
+  padding: 1rem;
+}
+
+@media (min-width: 600px) {
+  .carousel-card { flex: 0 0 50%; }
+}
+
+@media (min-width: 900px) {
+  .carousel-card { flex: 0 0 33.3333%; }
+}
+
+.carousel-arrow {
+  background: #f4f4f4;
+  border: none;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  font-size: 1.5rem;
+  margin: 0 5px;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.carousel-arrow:hover {
+  background: #ccc;
+}
+
+
+---
+
+### 4. JavaScript (Page Load):
+
+(function () {
+  const track = document.querySelector('.carousel-track');
+  const cards = track.querySelectorAll('.carousel-card');
+  const left = document.querySelector('.carousel-arrow.left');
+  const right = document.querySelector('.carousel-arrow.right');
+  let index = 0;
+
+  function getPerPage() {
+    const width = window.innerWidth;
+    if (width >= 900) return 3;
+    if (width >= 600) return 2;
+    return 1;
+  }
+
+  function updateCarousel() {
+    const perPage = getPerPage();
+    const offset = index * (100 / perPage);
+    track.style.transform = `translateX(-${offset}%)`;
+  }
+
+  right.addEventListener('click', () => {
+    const perPage = getPerPage();
+    const maxIndex = Math.ceil(cards.length / perPage) - 1;
+    if (index < maxIndex) {
+      index++;
+      updateCarousel();
+    }
+  });
+
+  left.addEventListener('click', () => {
+    if (index > 0) {
+      index--;
+      updateCarousel();
+    }
+  });
+
+  window.addEventListener('resize', () => {
+    index = 0;
+    updateCarousel();
+  });
+
+  updateCarousel();
+})();
+
+
+---
+
+Если тебе нужно — могу:
+
+упаковать это в отдельный .zip плагин
+
+или дать экспорт страницы для вставки в APEX
+
+
+Хочешь этот блок в виде готового APEX региона, который можно вставить через SQL файл?
+

@@ -1,84 +1,41 @@
-Чтобы реализовать в Oracle APEX 23.1 (как у тебя) функциональность в интерактивной сетке (Interactive Grid), которая позволяет скопировать значение из столбца в буфер обмена по нажатию кнопки, можно использовать следующий подход:
+Самый простой и рабочий способ — это через интерактивный отчет с ссылкой на скачивание с помощью apex_util.get_blob_file_src. Он не требует отдельной страницы, кода на PL/SQL или дополнительных процессов.
 
+Рекомендованный вариант:
 
----
-
-Инструкция: Копирование значения в буфер обмена из Interactive Grid (APEX 23.1)
-
-1. Подготовка столбца
-
-1. Открой приложение в APEX Builder.
-
-
-2. Перейди на нужную страницу с интерактивной сеткой.
-
-
-3. В свойствах сетки выбери столбец, из которого нужно копировать данные.
-
-
-4. Измени Type на Plain Text (based on Column) (чтобы убрать ссылки или редактирование).
-
-
-5. Включи Static ID, например COPY_COL.
+1. Создаешь интерактивный отчет на основе такого запроса:
 
 
 
-2. Добавление кнопки "Копировать"
+SELECT 
+    id,
+    name,
+    description,
+    apex_util.get_blob_file_src('BLOB_ITEM', id) AS download_link
+FROM your_table
 
-1. Добавь новый столбец в сетку, тип — Link.
+2. В APEX:
 
-
-2. В Target укажи #, а в Attributes:
-
-class="copy-btn"
-
-data-col="#COLUMN_NAME#" (замени на свой реальный столбец, например #EMAIL#)
+Добавляешь вычисляемую колонку в отчете типа:
 
 
 
 
-3. JavaScript код
+'<a href="' || apex_util.get_blob_file_src('BLOB_ITEM', id) || '" target="_blank">Скачать</a>' AS download_file
 
-1. Перейди в Page > Page Attributes > Execute when Page Loads.
-
-
-2. Вставь следующий JavaScript:
+3. Все! У тебя будет кнопка/ссылка "Скачать", которая подтягивает BLOB напрямую через APEX API.
 
 
 
-document.addEventListener("click", function(e) {
-  if (e.target && e.target.classList.contains("copy-btn")) {
-    e.preventDefault();
-    const value = e.target.getAttribute("data-col");
-    navigator.clipboard.writeText(value).then(() => {
-      apex.message.showPageSuccess("Скопировано: " + value);
-    }).catch(err => {
-      console.error("Ошибка при копировании", err);
-    });
-  }
-});
+Плюсы:
+
+Не надо писать PL/SQL код вручную.
+
+Работает прямо в отчете.
+
+Автоматически учитывает безопасность APEX-сессии.
+
+Поддерживает любые файлы (изображения, PDF и т.д.).
 
 
----
-
-Советы:
-
-Можно добавить иконку в колонке через Icon CSS Classes, например fa fa-copy.
-
-Для стилизации можно использовать классы из Universal Theme.
-
-
-Если хочешь, могу помочь создать динамическое действие для более сложных условий (например, копирование при двойном клике по ячейке). Хочешь такое?
-
-document.addEventListener("click", function(e) {
-  if (e.target.closest(".copy-btn")) {
-    e.preventDefault();
-    const value = e.target.closest(".copy-btn").getAttribute("data-col");
-    navigator.clipboard.writeText(value).then(() => {
-      apex.message.showPageSuccess("Скопировано: " + value);
-    }).catch(err => {
-      console.error("Ошибка копирования", err);
-    });
-  }
-});
+Хочешь, покажу пошагово в интерфейсе APEX, как это настроить?
 

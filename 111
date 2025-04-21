@@ -70,3 +70,15 @@ document.addEventListener("click", function(e) {
 
 Если хочешь, могу помочь создать динамическое действие для более сложных условий (например, копирование при двойном клике по ячейке). Хочешь такое?
 
+document.addEventListener("click", function(e) {
+  if (e.target.closest(".copy-btn")) {
+    e.preventDefault();
+    const value = e.target.closest(".copy-btn").getAttribute("data-col");
+    navigator.clipboard.writeText(value).then(() => {
+      apex.message.showPageSuccess("Скопировано: " + value);
+    }).catch(err => {
+      console.error("Ошибка копирования", err);
+    });
+  }
+});
+

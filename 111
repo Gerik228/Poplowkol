@@ -1,0 +1,72 @@
+Чтобы реализовать в Oracle APEX 23.1 (как у тебя) функциональность в интерактивной сетке (Interactive Grid), которая позволяет скопировать значение из столбца в буфер обмена по нажатию кнопки, можно использовать следующий подход:
+
+
+---
+
+Инструкция: Копирование значения в буфер обмена из Interactive Grid (APEX 23.1)
+
+1. Подготовка столбца
+
+1. Открой приложение в APEX Builder.
+
+
+2. Перейди на нужную страницу с интерактивной сеткой.
+
+
+3. В свойствах сетки выбери столбец, из которого нужно копировать данные.
+
+
+4. Измени Type на Plain Text (based on Column) (чтобы убрать ссылки или редактирование).
+
+
+5. Включи Static ID, например COPY_COL.
+
+
+
+2. Добавление кнопки "Копировать"
+
+1. Добавь новый столбец в сетку, тип — Link.
+
+
+2. В Target укажи #, а в Attributes:
+
+class="copy-btn"
+
+data-col="#COLUMN_NAME#" (замени на свой реальный столбец, например #EMAIL#)
+
+
+
+
+3. JavaScript код
+
+1. Перейди в Page > Page Attributes > Execute when Page Loads.
+
+
+2. Вставь следующий JavaScript:
+
+
+
+document.addEventListener("click", function(e) {
+  if (e.target && e.target.classList.contains("copy-btn")) {
+    e.preventDefault();
+    const value = e.target.getAttribute("data-col");
+    navigator.clipboard.writeText(value).then(() => {
+      apex.message.showPageSuccess("Скопировано: " + value);
+    }).catch(err => {
+      console.error("Ошибка при копировании", err);
+    });
+  }
+});
+
+
+---
+
+Советы:
+
+Можно добавить иконку в колонке через Icon CSS Classes, например fa fa-copy.
+
+Для стилизации можно использовать классы из Universal Theme.
+
+
+Если хочешь, могу помочь создать динамическое действие для более сложных условий (например, копирование при двойном клике по ячейке). Хочешь такое?
+

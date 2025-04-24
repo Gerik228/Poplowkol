@@ -1,74 +1,20 @@
-Ошибка на скрине:
-
-Error: SyntaxError: Unexpected token 's': "sqlerrm: ORA-..." is not valid JSON
-
-означает, что твой Ajax Callback возвращает текст (ошибку), который JavaScript пытается воспринять как JSON — и падает.
-
-
----
-
-Почему это происходит:
-
-APEX apex.server.process() по умолчанию ожидает JSON-ответ, а если PL/SQL возвращает ошибку или htp.p('строка без JSON-формата'), это ломает клиентский код.
-
-
----
-
-Как исправить:
-
-1. Оберни PL/SQL код Ajax-процесса в BEGIN ... EXCEPTION и верни JSON
-
-Пример Ajax Process:
-
-BEGIN
-  declare
-    l_clob   clob;
-    l_out    varchar2(32767);
-  begin
-    select html_clob_column
-      into l_clob
-      from faq_table
-     where id = :P1_FAQ_ID;
-
-    l_out := dbms_lob.substr(l_clob, 32767, 1);
-
-    -- Возвращаем как JSON-строку
-    owa_util.mime_header('application/json', FALSE);
-    htp.p('{"html":"' || apex_escape.json(l_out) || '"}');
-  end;
-END;
-
-
----
-
-2. В JavaScript — используй data.html:
-
-apex.server.process("GET_FAQ_HTML", {
-  pageItems: "#P1_FAQ_ID"
-}, {
-  dataType: "json",
-  success: function(data) {
-    document.querySelector("#faq-content-container").innerHTML = data.html;
-  },
-  error: function(xhr, status, error) {
-    console.error("Ajax error:", error);
-  }
-});
-
-
----
-
-ИТОГ:
-
-Ajax должен возвращать JSON, даже если это просто HTML в поле "html"
-
-Всегда экранируй строки через apex_escape.json()
-
-Ошибки ловятся в блоке EXCEPTION, чтобы не падать на клиенте
-
-
-
----
-
-Хочешь — я соберу и пришлю рабочий .sql файл с примером и комментариями?
-
+WITH
+  FUNCTION clob_to_varchar(p_clob CLOB) RETURN VARCHAR2 IS
+    l_result  VARCHAR2(32767);
+    l_offset  INTEGER := 1;
+    l_chunk   INTEGER := 4000;
+    l_piece   VARCHAR2(4000);
+  BEGIN
+    LOOP
+      l_piece := DBMS_LOB.SUBSTR(p_clob, l_chunk, l_offset);
+      EXIT WHEN l_piece IS NULL OR LENGTH(l_result) + LENGTH(l_piece) > 32767;
+      l_result := l_result || l_piece;
+      l_offset := l_offset + l_chunk;
+    END LOOP;
+    RETURN l_result;
+  END;
+SELECT
+  id,
+  question,
+  clob_to_varchar(answer_clob) AS answer_html
+FROM faq_table

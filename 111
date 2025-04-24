@@ -1,108 +1,10 @@
-Отлично, вот пошаговая инструкция, как реализовать подгрузку HTML из CLOB через Ajax в твоём FAQ-плагине в Oracle APEX:
-
-
----
-
-Цель
-
-Подгружать HTML из CLOB по ID, когда пользователь открывает вопрос в FAQ.
-
-
----
-
-1. В таблице FAQ
-
-Убедись, что есть поля:
-
-ID – номер вопроса
-
-QUESTION – заголовок
-
-ANSWER_CLOB – HTML CLOB
-
-
-
----
-
-2. На странице создаём Process → Ajax Callback
-
-Название: GET_FAQ_HTML
-
-Тип: PL/SQL
-
-Код:
-
-declare
-  l_clob   clob;
-  l_out    varchar2(32767);
-begin
-  select answer_clob
-    into l_clob
-    from faq_table
-   where id = :P1_FAQ_ID;
-
-  l_out := dbms_lob.substr(l_clob, 32767, 1); -- или кусками если >32K
-  htp.p(l_out);
-end;
-
-> Замените P1_FAQ_ID на свой реальный item, куда будет записываться ID.
-
-
-
-
----
-
-3. Добавь скрытый элемент страницы
-
-Название: P1_FAQ_ID
-
-
----
-
-4. В шаблоне плагина или HTML сделай контейнер:
-
-<div id="faq-content-container"></div>
-
-
----
-
-5. JavaScript (Dynamic Action или inline):
-
-Срабатывает по клику на вопрос.
-
 function loadFaqAnswer(faqId) {
   apex.item("P1_FAQ_ID").setValue(faqId);
-
   apex.server.process("GET_FAQ_HTML", {
     pageItems: "#P1_FAQ_ID"
   }, {
     success: function(data) {
-      document.querySelector("#faq-content-container").innerHTML = data;
-    },
-    error: function(req, status, error) {
-      console.error("Ошибка получения FAQ:", error);
+      document.getElementById("faq-content-container").innerHTML = data;
     }
   });
 }
-
-
----
-
-6. В шаблоне добавь вызов функции
-
-Например, в кнопке:
-
-<button type="button" onclick="loadFaqAnswer(#FAQ_ID#)">Показать ответ</button>
-
-
----
-
-Готово!
-
-Теперь при клике на вопрос будет подгружаться HTML из CLOB и вставляться без ограничений.
-
-
----
-
-Хочешь — соберу SQL script и готовую демо-страницу под это?
-

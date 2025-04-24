@@ -1,41 +1,108 @@
-Самый простой и рабочий способ — это через интерактивный отчет с ссылкой на скачивание с помощью apex_util.get_blob_file_src. Он не требует отдельной страницы, кода на PL/SQL или дополнительных процессов.
-
-Рекомендованный вариант:
-
-1. Создаешь интерактивный отчет на основе такого запроса:
+Отлично, вот пошаговая инструкция, как реализовать подгрузку HTML из CLOB через Ajax в твоём FAQ-плагине в Oracle APEX:
 
 
+---
 
-SELECT 
-    id,
-    name,
-    description,
-    apex_util.get_blob_file_src('BLOB_ITEM', id) AS download_link
-FROM your_table
+Цель
 
-2. В APEX:
-
-Добавляешь вычисляемую колонку в отчете типа:
+Подгружать HTML из CLOB по ID, когда пользователь открывает вопрос в FAQ.
 
 
+---
 
+1. В таблице FAQ
 
-'<a href="' || apex_util.get_blob_file_src('BLOB_ITEM', id) || '" target="_blank">Скачать</a>' AS download_file
+Убедись, что есть поля:
 
-3. Все! У тебя будет кнопка/ссылка "Скачать", которая подтягивает BLOB напрямую через APEX API.
+ID – номер вопроса
+
+QUESTION – заголовок
+
+ANSWER_CLOB – HTML CLOB
 
 
 
-Плюсы:
+---
 
-Не надо писать PL/SQL код вручную.
+2. На странице создаём Process → Ajax Callback
 
-Работает прямо в отчете.
+Название: GET_FAQ_HTML
 
-Автоматически учитывает безопасность APEX-сессии.
+Тип: PL/SQL
 
-Поддерживает любые файлы (изображения, PDF и т.д.).
+Код:
+
+declare
+  l_clob   clob;
+  l_out    varchar2(32767);
+begin
+  select answer_clob
+    into l_clob
+    from faq_table
+   where id = :P1_FAQ_ID;
+
+  l_out := dbms_lob.substr(l_clob, 32767, 1); -- или кусками если >32K
+  htp.p(l_out);
+end;
+
+> Замените P1_FAQ_ID на свой реальный item, куда будет записываться ID.
 
 
-Хочешь, покажу пошагово в интерфейсе APEX, как это настроить?
+
+
+---
+
+3. Добавь скрытый элемент страницы
+
+Название: P1_FAQ_ID
+
+
+---
+
+4. В шаблоне плагина или HTML сделай контейнер:
+
+<div id="faq-content-container"></div>
+
+
+---
+
+5. JavaScript (Dynamic Action или inline):
+
+Срабатывает по клику на вопрос.
+
+function loadFaqAnswer(faqId) {
+  apex.item("P1_FAQ_ID").setValue(faqId);
+
+  apex.server.process("GET_FAQ_HTML", {
+    pageItems: "#P1_FAQ_ID"
+  }, {
+    success: function(data) {
+      document.querySelector("#faq-content-container").innerHTML = data;
+    },
+    error: function(req, status, error) {
+      console.error("Ошибка получения FAQ:", error);
+    }
+  });
+}
+
+
+---
+
+6. В шаблоне добавь вызов функции
+
+Например, в кнопке:
+
+<button type="button" onclick="loadFaqAnswer(#FAQ_ID#)">Показать ответ</button>
+
+
+---
+
+Готово!
+
+Теперь при клике на вопрос будет подгружаться HTML из CLOB и вставляться без ограничений.
+
+
+---
+
+Хочешь — соберу SQL script и готовую демо-страницу под это?
 

@@ -18,3 +18,25 @@ SELECT
   question,
   clob_to_varchar(answer_clob) AS answer_html
 FROM faq_table
+
+CREATE OR REPLACE VIEW faq_view AS
+WITH
+  FUNCTION clob_to_varchar(p_clob CLOB) RETURN VARCHAR2 IS
+    l_result  VARCHAR2(32767);
+    l_offset  INTEGER := 1;
+    l_chunk   INTEGER := 4000;
+    l_piece   VARCHAR2(4000);
+  BEGIN
+    LOOP
+      l_piece := DBMS_LOB.SUBSTR(p_clob, l_chunk, l_offset);
+      EXIT WHEN l_piece IS NULL OR LENGTH(l_result) + LENGTH(l_piece) > 32767;
+      l_result := l_result || l_piece;
+      l_offset := l_offset + l_chunk;
+    END LOOP;
+    RETURN l_result;
+  END;
+SELECT
+  id,
+  question,
+  clob_to_varchar(answer_clob) AS answer_html
+FROM faq_table;

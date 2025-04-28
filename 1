@@ -3,109 +3,69 @@ whenever sqlerror exit sql.sqlcode rollback
 
 begin
     wwv_flow_api.import_begin(
-        p_version_yyyy_mm_dd=>'2023.05.17',
-        p_release=>'23.1.0.00.08',
-        p_default_workspace_id=>123456789012345678,
-        p_default_application_id=>100,
-        p_default_owner=>'APEX_PLUGIN'
+        p_version_yyyy_mm_dd => '2023.01.01',
+        p_release            => '23.1.0',
+        p_default_workspace_id => 12345678901234567,
+        p_default_application_id => 100,
+        p_default_owner      => user
     );
 end;
 /
-prompt --application/shared_components/plugins/region_type/FAQ
+prompt --application/shared_components/plugins/region_type/faq
 
 begin
     wwv_flow_api.create_plugin(
-        p_id=>wwv_flow_api.id(165832345678901234),
-        p_plugin_type=>'REGION TYPE',
-        p_name=>'FAQ',
-        p_display_name=>'FAQ',
-        p_supported_ui_types=>'DESKTOP',
-        p_standard_attributes=>'SOURCE_SQL',
-        p_plsql_code=>wwv_flow_utilities.join(wwv_flow_t_varchar2(
-            'FUNCTION render_region(p_region IN apex_plugin.t_region,',
-            ' p_plugin IN apex_plugin.t_plugin,',
-            ' p_is_printer_friendly IN BOOLEAN)',
-            ' RETURN apex_plugin.t_region_render_result IS',
-            ' l_result apex_plugin.t_region_render_result;',
-            ' l_data apex_plugin_util.t_column_value_list;',
-            ' l_title VARCHAR2(32767);',
-            ' l_description CLOB;',
+        p_id            => wwv_flow_api.id(20250429000000001),
+        p_plugin_type   => 'REGION TYPE',
+        p_name          => 'FAQ',           -- Internal Name
+        p_display_name  => 'FAQ',           -- Display Name
+        p_supported_ui_types => 'DESKTOP',
+        p_plsql_code    => wwv_flow_string.join(wwv_flow_t_varchar2(
+            'FUNCTION renderFAQRegion(',
+            '    p_region            IN apex_plugin.t_region,',
+            '    p_plugin            IN apex_plugin.t_plugin,',
+            '    p_is_printer_friendly IN BOOLEAN',
+            ') RETURN apex_plugin.t_region_render_result',
+            'IS',
+            '    l_result apex_plugin.t_region_render_result;', 
+            '    v_data   apex_plugin_util.t_column_value_list;', 
+            '    l_title  VARCHAR2(32767);',
             'BEGIN',
-            ' -- Debug mode logging',
-            ' IF apex_application.g_debug THEN',
-            '  apex_plugin_util.debug_region(p_plugin => p_plugin, p_region => p_region);',
-            ' END IF;',
-            ' -- Fetch FAQ data from region source (first 1000 rows)',
-            ' l_data := apex_plugin_util.get_data(p_region.source, 1, 1000, p_region.name);',
-            ' -- Open container',
-            ' htp.p(''<div class="faq-container">'');',
-            ' IF l_data IS NOT NULL THEN',
-            '   FOR i IN 1..NVL(l_data(1).COUNT, 0) LOOP',
-            '     l_title := NULL;',
-            '     l_description := NULL;',
-            '     IF l_data.COUNT >= 1 THEN',
-            '       l_title := l_data(1)(i);',
-            '     END IF;',
-            '     IF l_data.COUNT >= 2 THEN',
-            '       l_description := l_data(2)(i);',
-            '     END IF;',
-            '     -- Escape title to prevent XSS, do not escape description (contains HTML)',
-            '     l_title := apex_escape.html(l_title);',
-            '     -- Output FAQ item structure',
-            '     htp.p(''<div class="faq-item">'');',
-            '     htp.p(''<button class="faq-question">'' || NVL(l_title, '''') || ''</button>'');',
-            '     htp.p(''<div class="faq-answer">'' || NVL(l_description, '''') || ''</div>'');',
-            '     htp.p(''</div>'');',
-            '   END LOOP;',
-            ' END IF;',
-            ' -- Close container',
-            ' htp.p(''</div>'');',
-            ' -- Include toggling script',
-            ' htp.p(''<script>'');',
-            ' htp.p(''document.querySelectorAll(''.faq-question'').forEach(function(btn){'');',
-            ' htp.p(''  btn.addEventListener(''click'', function(){'');',
-            ' htp.p(''    this.parentNode.classList.toggle(''active'');'');',
-            ' htp.p(''  });'');',
-            ' htp.p(''});'');',
-            ' htp.p(''</script>'');',
-            ' -- Include minimal CSS styles',
-            ' htp.p(''<style>'');',
-            ' htp.p(''.faq-item { margin-bottom: 1em; }'');',
-            ' htp.p(''.faq-question { width:100%; text-align:left; cursor:pointer; padding:0.5em; font-weight:bold; border:none; background:#f1f1f1; }'');',
-            ' htp.p(''.faq-answer { display:none; padding:0.5em; }'');',
-            ' htp.p(''.faq-item.active .faq-answer { display:block; }'');',
-            ' htp.p(''</style>'');',
-            ' RETURN l_result;',
-            'END render_region;'
+            '    -- Получить данные SQL-источника (2 колонки: вопрос и ответ)',
+            '    v_data := apex_plugin_util.get_data(',
+            '                 p_sql_statement => p_region.source,',
+            '                 p_min_columns   => 2,',
+            '                 p_max_columns   => 2,',
+            '                 p_component_name=> p_region.name );',
+            '',
+            '    -- Вывести FAQ, перебирая полученные строки',
+            '    IF v_data.count >= 2 AND v_data(1).count > 0 THEN',
+            '       htp.p(''<div class="faq-region">'');  -- контейнер всех QA',
+            '       FOR i IN 1 .. v_data(1).count LOOP',
+            '           l_title := sys.htf.escape_sc(v_data(1)(i));  -- текст вопроса с экранированием',
+            '           -- Кнопка-вопрос с JS для переключения следующего блока ответа',
+            '           htp.p(''<button type="button" class="t-Button" onclick="''||',
+            '                 ''this.nextElementSibling.style.display = ''||',
+            '                 ''this.nextElementSibling.style.display === ''''none'''' ? ''''block'''' : ''''none'''';''||',
+            '                 ''">''||',
+            '                 ''<span class="t-Button-label">''|| l_title ||''</span></button>'');',
+            '           -- Блок с ответом (HTML), скрытый по умолчанию',
+            '           htp.p(''<div class="faq-answer" style="display:none;">''|| nvl(v_data(2)(i), '''') ||''</div>'');',
+            '       END LOOP;',
+            '       htp.p(''</div>'');',
+            '    END IF;',
+            '',
+            '    RETURN l_result;',
+            'END renderFAQRegion;'
         )),
-        p_subscribe_plugin_settings=>true,
-        p_version_identifier=>'1.0'
-    );
-
-    wwv_flow_api.create_plugin_attribute(
-        p_id=>wwv_flow_api.id(165832345678901235),
-        p_plugin_id=>wwv_flow_api.id(165832345678901234),
-        p_attribute_scope=>'COMPONENT',
-        p_attribute_sequence=>1,
-        p_display_sequence=>10,
-        p_prompt=>'Title',
-        p_attribute_type=>'REGION SOURCE COLUMN',
-        p_is_required=>false,
-        p_is_translatable=>false,
-        p_column_data_types=>'VARCHAR2'
-    );
-
-    wwv_flow_api.create_plugin_attribute(
-        p_id=>wwv_flow_api.id(165832345678901236),
-        p_plugin_id=>wwv_flow_api.id(165832345678901234),
-        p_attribute_scope=>'COMPONENT',
-        p_attribute_sequence=>2,
-        p_display_sequence=>20,
-        p_prompt=>'Description',
-        p_attribute_type=>'REGION SOURCE COLUMN',
-        p_is_required=>false,
-        p_is_translatable=>false,
-        p_column_data_types=>'CLOB'
+        p_api_version       => 2,
+        p_render_function   => 'renderFAQRegion',
+        p_subscribe_plugin_settings => true,
+        p_help_text         => wwv_flow_string.join(wwv_flow_t_varchar2(
+            'Плагин регион "FAQ" – вывод списка часто задаваемых вопросов с ответами.',
+            'SQL-источник должен возвращать 2 колонки: первая – вопрос (текст), вторая – ответ (HTML).'
+        )),
+        p_version_identifier => '1.0'
     );
 end;
 /
@@ -117,6 +77,3 @@ begin
     commit;
 end;
 /
-set verify on feedback on define on
-
-prompt Plugin FAQ imported successfully.

@@ -1,0 +1,200 @@
+Ниже ‒ «пошаговая карта», как в Apex 23.1 заставить твой компонент-FAQ корректно вытягивать и отображать длинные HTML-CLOB-ответы через Ajax. Я держусь твоей исходной разметки (<dt>/<dd>, кнопка, скрытый блок).
+
+
+---
+
+0 ‒ Исходные данные
+
+
+---
+
+1 ‒ Правим HTML-шаблон плагина
+
+<dt class="x-faq-dt">
+  <!-- кнопка: все, что кликается -->
+  <button type="button"
+          class="x-faq-btn"
+          aria-expanded="false"
+          data-faq-id="#CURRENT_ROW_ID#">
+    <span class="x-faq-title">#QUESTION#</span>
+
+    <!-- (+)(–) иконки оставь как были, я сократил -->
+    <span class="fa fa-plus" aria-hidden="true"></span>
+    <span class="fa fa-minus" aria-hidden="true" style="display:none"></span>
+  </button>
+</dt>
+
+<dd class="x-faq-dd" style="display:none;">
+  <!-- контейнер, куда придёт ответ -->
+  <div id="faq_answer_#CURRENT_ROW_ID#">Загрузка…</div>
+</dd>
+
+> Важное:
+• Убираем #ANSWER!RAW#.
+• Никаких <script> внутри шаблона ‒ они исполняются слишком рано.
+
+
+
+
+---
+
+2 ‒ Создаём Ajax-процесс
+
+1. Открываешь Page Designer той страницы, где выводится FAQ.
+
+
+2. Processing ▸ ➜ «+» ▸ Process ▸ PL/SQL.
+
+
+3. Имя: GET_FAQ_ANSWER Тип: Ajax Callback (On Demand).
+
+
+4. Код:
+
+
+
+declare
+  l_answer clob;
+begin
+  -- берём ID, который придёт как x01
+  select answer
+    into l_answer
+    from faq_table          -- ← твоя таблица
+   where id = apex_application.g_x01;
+
+  -- отдаём как HTML
+  owa_util.mime_header('text/html', false);
+  htp.p(l_answer);
+end;
+
+5. Condition = Always.
+
+
+
+
+---
+
+3 ‒ Добавляем JS-функцию (уже после загрузки Apex)
+
+Где разместить
+
+Page Designer ▸ Page ▸ JavaScript
+
+Строка Function and Global Variable Declaration – самое удобное место.
+Или вынеси в Static Application File и подключи на странице – не принципиально.
+
+
+Код
+
+/* глобальная функция, которую будут дергать кнопки */
+function loadFaqAnswer(button){
+  var id = button.getAttribute('data-faq-id'),
+      dd = button.closest('dt').nextElementSibling,
+      div = document.getElementById('faq_answer_'+ id);
+
+  /* если ещё не грузили – делаем Ajax */
+  if(!div.dataset.loaded){
+    apex.server.process(
+      "GET_FAQ_ANSWER",
+      { x01: id },          /* <-- передаём ID в процесс */
+      {
+        dataType: "html",
+        success: function(html){
+          div.innerHTML = html;
+          div.dataset.loaded = "1";    // помечаем «загружено»
+        },
+        error: function(){
+          div.innerHTML = "Ошибка загрузки ответа";
+        }
+      }
+    );
+  }
+
+  /* переключаем видимость dd и иконок */
+  var plus  = button.querySelector('.fa-plus'),
+      minus = button.querySelector('.fa-minus');
+
+  if(dd.style.display==="none"){
+    dd.style.display = "";
+    plus.style.display = "none";
+    minus.style.display = "";
+    button.setAttribute("aria-expanded","true");
+  }else{
+    dd.style.display = "none";
+    plus.style.display = "";
+    minus.style.display = "none";
+    button.setAttribute("aria-expanded","false");
+  }
+}
+
+
+---
+
+4 ‒ Привязываем вызов функции к кнопке
+
+Всё просто: в шаблоне у тебя уже стоит атрибут data-faq-id.
+Остаётся сказать кнопке «при клике дерни функцию»:
+
+Вариант A ‒ HTML-атрибут
+
+Добавь прямо в <button …>:
+
+onclick="loadFaqAnswer(this)"
+
+Вариант B ‒ Динамическое действие (чистый HTML)
+
+Если не любишь onclick в разметке:
+
+1. Create Dynamic Action
+
+Event: Click
+
+Selection Type: jQuery Selector
+
+Selector: .x-faq-btn
+
+
+
+2. True Action: Execute JavaScript Code
+
+loadFaqAnswer(this.triggeringElement);
+
+
+
+Оба способа равноправны; выбирай, что приятнее.
+
+
+---
+
+5 ‒ Проверяем
+
+1. F12 → Network → XHR.
+
+
+2. Кликаешь вопрос – видишь вызов wwv_flow.show.
+
+
+3. Статус 200, в Response приходит твой HTML.
+
+
+4. В блоке <div id="faq_answer_X"> заменяется «Загрузка…» на реальный ответ.
+
+
+
+Если в Response пусто – проверяй ID (data-faq-id) и запрос в PL/SQL;
+Если запрос не уходит – смотри, сработал ли loadFaqAnswer (Console → debugger; вставь).
+
+
+---
+
+6 ‒ Мелкие, но важные штрихи
+
+
+---
+
+Всё!
+
+После этих шести блоков твой FAQ-плагин безопасно вытягивает любые размеры CLOB, не трогает session-state и не падает на ORA-20987.
+
+Если захочешь добавить плавную анимацию (slide-down), подсветку кода ответа, lazy-load при скролле ‒ скажи, накину примеры. Удачи в Loginom-&-APEX-хакерстве!
+

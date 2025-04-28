@@ -1,107 +1,100 @@
-Я снова вижу только серую заглушку ("This image is unavailable because it is of an unsupported file type").
-Фото не подгрузилось.
+Понял тебя.
+Раз у тебя остается только надпись "Загрузка...", значит:
 
-Но не страшно!
-Судя по тому, как ты действуешь, ты хочешь идти дальше.
+Клик на кнопку работает (скрипт срабатывает),
+
+Запрос на сервер не приносит ответ — контент не подгружается.
 
 
----
-
-Итак, как мы сделаем "профессиональную" подгрузку ответа только по клику:
-
-Идея:
-
-Когда пользователь нажимает на вопрос, мы первый раз загружаем ответ через Ajax.
-
-При последующих кликах не грузим заново, а просто показываем/скрываем.
-
+Значит проблема именно в Ajax-запросе или в серверном процессе APEX.
 
 
 ---
 
-Какой код тебе нужен
+Сейчас точно проверим:
 
-В HTML-шаблоне (где у тебя кнопка) добавляем атрибут data-faq-id:
+1. Открой вкладку Network → XHR (в DevTools)
 
-<dt class="x-faq-dt">
-  <button type="button" class="x-faq-btn" aria-expanded="false" data-faq-id="#CURRENT_ROW_ID#">
-    <span class="x-faq-title">#QUESTION#</span>
-    <span class="x-faq-icon-parent">
-      <span class="fa fa-plus" aria-hidden="true"></span>
-      <span class="fa fa-minus" aria-hidden="true" style="display: none;"></span>
-    </span>
-  </button>
-</dt>
-<dd class="x-faq-dd" style="display: none;">
-  <div id="faq_answer_#CURRENT_ROW_ID#">Загрузка...</div>
-</dd>
+Когда ты нажимаешь на вопрос, должен появиться запрос типа wwv_flow.show или f?p=....
+Кликни на него и скажи:
+
+Статус ответа (200, 404, 500)?
+
+Что в ответе (Response)?
+
+
+Если там пусто или ошибка — надо чинить серверную часть.
 
 
 ---
 
-И добавляем общий скрипт внизу страницы:
+2. Проверим PL/SQL процесс на стороне сервера
 
-<script>
-document.addEventListener("DOMContentLoaded", function() {
-  // Вешаем обработчик на все кнопки FAQ
-  document.querySelectorAll('.x-faq-btn').forEach(function(button) {
-    button.addEventListener('click', function() {
-      var id = this.getAttribute('data-faq-id');
-      var contentDiv = document.getElementById('faq_answer_' + id);
-      var dd = this.closest('dt').nextElementSibling;
+Процесс GET_FAQ_ANSWER должен выглядеть приблизительно так:
 
-      // Проверяем: если контент еще не загружен, грузим через AJAX
-      if (!contentDiv.dataset.loaded) {
-        apex.server.process("GET_FAQ_ANSWER", { x01: id }, {
-          dataType: "html",
-          success: function(data) {
-            contentDiv.innerHTML = data;
-            contentDiv.dataset.loaded = "true"; // Помечаем как загруженное
-          },
-          error: function(xhr, status, error){
-            contentDiv.innerHTML = "Ошибка загрузки ответа";
-          }
-        });
-      }
+declare
+  l_answer clob;
+begin
+  select your_clob_column
+    into l_answer
+    from your_table
+   where id = apex_application.g_x01; -- ID который передали из JavaScript
 
-      // Переключаем видимость ответа
-      if (dd.style.display === "none") {
-        dd.style.display = "";
-        this.setAttribute("aria-expanded", "true");
-      } else {
-        dd.style.display = "none";
-        this.setAttribute("aria-expanded", "false");
-      }
-    });
-  });
-});
-</script>
+  owa_util.mime_header('text/html', false);
+  htp.p(l_answer);
+end;
 
+Проверь, что:
 
----
+Название процесса в APEX точно GET_FAQ_ANSWER.
 
-Что делает этот код
+В твоей таблице есть запись с таким ID.
 
+Колонка your_clob_column реально содержит текст.
 
----
-
-Почему это круто
-
-Страница грузится быстро, потому что сначала только вопросы.
-
-Ответы подтягиваются по мере необходимости.
-
-Нет лишнего трафика.
-
-Все делается плавно и нативно для APEX.
+Процесс не привязан к условиям (Condition = Always Execute).
 
 
 
 ---
 
-Хотите, я еще дополнительно покажу как сделать плавную анимацию открытия/закрытия ответа (например, "аккордеон")?
-Будет вообще как на лучших сайтах.
+3. Вставь для теста в процесс простой код
 
-Сказать как?
-(Дело на 1 минуту.)
+Чтобы точно проверить, что процесс работает, замени временно процесс на:
+
+owa_util.mime_header('text/html', false);
+htp.p('Ответ успешно загружен через Ajax!');
+
+Если после клика появится текст "Ответ успешно загружен через Ajax!",
+значит проблема была в неправильном запросе к таблице.
+
+
+---
+
+4. Проверка ID
+
+У тебя в скрипте:
+
+var id = this.getAttribute('data-faq-id');
+
+Добавь перед apex.server.process простую отладку:
+
+console.log("Загружаем FAQ для ID = " + id);
+
+Посмотри в консоли, что выводится.
+Если ID пустой (undefined или #CURRENT_ROW_ID# вместо цифры) — надо чинить подстановку в шаблоне.
+
+
+---
+
+Кратко:
+
+
+---
+
+Хочешь, чтобы я тебе сразу скинул 100% рабочий пример на основе FAQ-плагина с уже готовым правильным шаблоном и процессом?
+Чтобы ты просто вставил и всё заработало?
+(Буквально сразу увидишь ответы без надписи "Загрузка...")
+
+Сказать?
 

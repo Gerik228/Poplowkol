@@ -1,38 +1,5 @@
-Отлично, идея понятна — ты хочешь, чтобы в твоем плагине FAQ текст ответа (#ANSWER!RAW#) грузился через Ajax, чтобы избежать ошибок с CLOB и снять лимит на объем текста.
-
-План действий:
-
-Что мы сделаем
-
-1. В плагине вместо прямой подстановки #ANSWER!RAW# вставим контейнер <div> с каким-то уникальным ID.
-
-
-2. При рендере страницы сразу напишем маленький скрипт, который через apex.server.process сделает запрос на сервер (On Demand процесс) и подгрузит туда содержимое CLOB.
-
-
-3. Создадим On Demand процесс, который будет получать ID записи и возвращать сам текст ответа (HTML в CLOB).
-
-
-
-
----
-
-1. Изменяем HTML-шаблон плагина
-
-Вместо:
-
-<dd class="x-faq-dd" style="display: none;">
-#ANSWER!RAW#
-</dd>
-
-Сделай так:
-
-<dd class="x-faq-dd" style="display: none;">
-  <div id="faq_answer_#CURRENT_ROW_ID#">Загрузка...</div>
-</dd>
-
 <script>
-(function(){
+document.addEventListener("DOMContentLoaded", function() {
   var id = "#CURRENT_ROW_ID#";
   apex.server.process("GET_FAQ_ANSWER", {
     x01: id
@@ -45,67 +12,5 @@
       $("#faq_answer_" + id).html("Ошибка загрузки ответа");
     }
   });
-})();
+});
 </script>
-
-Важно:
-
-#CURRENT_ROW_ID# — это или ID записи (если есть), или придумай свой уникальный ключ для строки. Иначе все ответы будут грузиться в один и тот же div.
-
-apex.server.process дергает процесс GET_FAQ_ANSWER и передает туда ID записи через x01.
-
-
-
----
-
-2. Создаем On Demand процесс в APEX
-
-На той же странице создай процесс типа "Ajax Callback" (On Demand) с именем GET_FAQ_ANSWER.
-
-Код процесса:
-
-declare
-  l_answer clob;
-begin
-  select answer_column -- или твое поле с ответом
-    into l_answer
-    from my_table
-   where id = apex_application.g_x01; -- получаем ID из запроса
-
-  owa_util.mime_header('text/html', FALSE); 
-  htp.p(l_answer);
-end;
-
-Объяснение:
-
-apex_application.g_x01 — это значение x01, которое мы передаем из JavaScript.
-
-owa_util.mime_header('text/html', FALSE) говорит браузеру, что мы отдаем HTML-текст.
-
-htp.p(l_answer) выводит ответ прямо в браузер.
-
-
-
----
-
-3. Что нужно проверить
-
-Чтобы в SQL-запросе ты выбирал нужную таблицу/колонку (answer_column и my_table я написал для примера).
-
-Чтобы ID строки (тот, что в #CURRENT_ROW_ID#) совпадал с тем, что в таблице в базе.
-
-Если ответов много, надо быть аккуратным с количеством запросов, особенно на больших страницах.
-
-
-
----
-
-Кратко
-
-
----
-
-Хочешь, я сразу помогу тебе оформить полный шаблон HTML + JS + пример PL/SQL кода для твоего плагина, чтобы ты скопировал?
-Тогда еще быстрее настроим!
-Нужно?
-

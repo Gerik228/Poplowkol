@@ -1,3 +1,35 @@
+function render (
+    p_region in apex_plugin.t_region,
+    p_plugin in apex_plugin.t_plugin,
+    p_is_printer_friendly in boolean
+) return apex_plugin.t_region_render_result
+is
+    l_content clob;
+begin
+    -- Получаем CLOB по ID
+    select des_test
+    into l_content
+    from BI_PORTAL_FAQ
+    where id = :P1_ID;
+
+    -- Выводим разметку через HTP
+    htp.p('<div class="wrapper">');
+    htp.p('<h1>Моя страница</h1>');
+    htp.p('<div id="dynamic-content">');
+
+    if l_content is not null then
+        htp.p(l_content);
+    else
+        htp.p('<p>Нет данных для отображения.</p>');
+    end if;
+
+    htp.p('</div>');
+    htp.p('</div>');
+
+    return null;
+end render;
+
+
 Отлично! Ты хочешь чисто вручную создать плагин через интерфейс APEX — это правильный и очень профессиональный подход.
 Давай тогда сделаем всё пошагово через GUI без скриптов!
 

@@ -1,171 +1,162 @@
-Отлично!
-Сейчас я напишу тебе полную и пошаговую инструкцию, как создать свой Region Plugin в Oracle APEX для вывода CLOB с готовой HTML-разметкой.
-Будет все: от создания файла плагина до загрузки в APEX.
+Отлично! Ты хочешь чисто вручную создать плагин через интерфейс APEX — это правильный и очень профессиональный подход.
+Давай тогда сделаем всё пошагово через GUI без скриптов!
 
 
 ---
 
-Полная инструкция: Плагин "Region" для вставки HTML из CLOB
+Пошаговая инструкция: создать Плагин Регион вручную в APEX
 
 
 ---
 
-1. Создание SQL скрипта для установки плагина
+Шаг 1: Открываем "Shared Components"
 
-Создаём файл, например, dynamic_html_region_plugin.sql
-Вот содержимое:
+1. Перейди в своё приложение в APEX.
 
-prompt Creating Plugin: Dynamic HTML Region
 
+2. В левом меню выбери Shared Components.
+
+
+
+
+---
+
+Шаг 2: Создаем новый Plugin
+
+1. В разделе Plugins нажми Create.
+
+
+2. Выбери Create a Plugin.
+
+
+3. Тип плагина выбери: Region Type.
+
+
+4. Нажми Next.
+
+
+
+
+---
+
+Шаг 3: Настройки Плагина
+
+Заполни базовые параметры:
+
+
+---
+
+Шаг 4: Пишем PL/SQL код рендера
+
+Вставляем в поле PL/SQL Code такой код:
+
+function render (
+    p_region in apex_plugin.t_region,
+    p_plugin in apex_plugin.t_plugin,
+    p_is_printer_friendly in boolean
+) return apex_plugin.t_region_render_result
+is
+    l_content clob;
 begin
-    apex_plugin.create_plugin (
-        p_id                => null,
-        p_plugin_type       => 'REGION TYPE',
-        p_name              => 'DYNAMIC_HTML_REGION',
-        p_display_name      => 'Dynamic HTML Region',
-        p_supported_ui_types => 'DESKTOP',
-        p_plsql_code        => q'[
-            function render (
-                p_region in apex_plugin.t_region,
-                p_plugin in apex_plugin.t_plugin,
-                p_is_printer_friendly in boolean
-            ) return apex_plugin.t_region_render_result
-            is
-                l_content clob;
-            begin
-                -- Получаем CLOB из таблицы
-                select your_clob_column
-                into l_content
-                from your_table
-                where id = :P1_ID; -- можно привязать к параметру плагина
+    -- Получаем CLOB по нужному ID
+    select your_clob_column
+    into l_content
+    from your_table
+    where id = :P1_ID; -- Здесь можно поменять на нужный элемент страницы
 
-                -- Печатаем HTML
-                apex_plugin_util.print_clob_output(
-                    p_clob => 
-                        '<div class="wrapper">
-                            <h1>Моя страница</h1>
-                            <div id="dynamic-content">' || l_content || '</div>
-                        </div>'
-                );
-
-                return null;
-            end render;
-        ]',
-        p_render_function   => 'render',
-        p_api_version       => 2,
-        p_version_identifier=> '1.0',
-        p_substitute_attributes => 'Y',
-        p_subscribe_plugin_settings => 'N'
+    -- Выводим HTML с содержимым CLOB
+    apex_plugin_util.print_clob_output(
+        p_clob => 
+            '<div class="wrapper">
+                <h1>Моя страница</h1>
+                <div id="dynamic-content">' || l_content || '</div>
+            </div>'
     );
-    commit;
-end;
-/
 
+    return null;
+end render;
 
----
+Важно:
 
-2. Что делает этот код?
+Замени your_table и your_clob_column на свои реальные имена таблицы и столбца!
 
-Создаёт новый плагин типа Region с именем Dynamic HTML Region.
-
-Подключает PL/SQL функцию render, которая:
-
-Достаёт CLOB из таблицы по :P1_ID.
-
-Вставляет CLOB в готовую HTML разметку.
-
-
-Выводит всё сразу на страницу.
+:P1_ID — это элемент страницы, откуда будет браться ID записи.
 
 
 
 ---
 
-3. Как установить этот плагин в APEX
+Шаг 5: Завершаем создание
 
-1. Открой APEX -> Workspace.
-
-
-2. Зайди в SQL Workshop -> SQL Commands.
+1. Нажми Create Plugin.
 
 
-3. Выполни скрипт dynamic_html_region_plugin.sql.
-
-
-
-Плагин будет зарегистрирован.
-
-
----
-
-4. Как использовать плагин на странице
-
-1. Иди в своё приложение.
-
-
-2. Нажми Create Region -> выбери Plug-ins.
-
-
-3. Найди Dynamic HTML Region.
-
-
-4. Создай регион на нужной странице.
-
-
-5. Обязательно укажи значение элемента P1_ID (или поменяй в PL/SQL коде под свои нужды).
+2. Всё, плагин создан!
 
 
 
 
 ---
 
-5. Что важно учесть
+Шаг 6: Используем плагин на странице
 
-Если хочешь использовать динамические параметры, лучше сделать атрибуты плагина через apex_plugin_util.get_attribute.
+1. Открой нужную страницу.
 
-Если CLOB может быть очень большим — настрой параметр DBMS_OUTPUT на высокое значение.
 
-Если есть вложенные скрипты (<script> внутри CLOB) — проверь настройки XSS в приложении.
+2. Нажми Create Region.
+
+
+3. В списке источников выбери Plugins -> Dynamic HTML Region.
+
+
+4. В свойствах региона:
+
+Укажи элемент страницы P1_ID с нужным ID записи.
+
+
+
+5. Сохрани.
+
 
 
 
 ---
 
-Бонус: Версия с параметром для ID
+Что в итоге получится:
 
-Если хочешь сделать плагин более универсальным (чтобы ID был не привязан к :P1_ID, а передавался через атрибут плагина):
+На странице будет выводиться твоя готовая верстка.
 
-Вместо кода:
+Внутри будет вставлен CLOB (HTML/CSS/JS) из базы.
 
-where id = :P1_ID;
+Никаких ограничений по длине текста.
 
-пиши:
+Работа через сервер, быстро и без лишнего JS.
+
+
+
+---
+
+Бонус: Оптимизация на будущее
+
+Если хочешь не зависеть от элемента страницы (P1_ID), можно добавить атрибут Attribute 1 в плагине:
+
+Перейди в настройки своего плагина -> Attributes -> Add Attribute.
+
+Назови атрибут, например, Record ID.
+
+
+И внутри PL/SQL замени:
 
 where id = apex_plugin_util.get_attribute(p_region.attribute_01);
 
-И добавь в плагин описание атрибута:
-
-Attribute 1 Name: Record ID
-
-Type: Text
-
-Required: Yes
-
-
-Тогда ты при создании региона будешь указывать ID записи прямо в свойствах.
+Тогда при создании региона будешь прямо задавать ID записи через свойства.
 
 
 ---
 
-ИТОГО
+Хочешь, я тебе ещё подскажу,
 
-Ты получаешь:
-
-
----
-
-Хочешь, я ещё сразу кину тебе готовый ZIP-пакет с этим плагином (plugin.sql + manifest.json) для быстрой загрузки через "Create -> Plug-in -> Import" в APEX?
-
-Скажи — тогда я всё упакую!
-Хочешь?
+как красиво оформить ошибку, если данные не найдены (например, показать "Нет данных для отображения")?
+Сказать? Будет аккуратный UX!
+Сказать "да"?
 

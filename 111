@@ -1,16 +1,107 @@
+Я снова вижу только серую заглушку ("This image is unavailable because it is of an unsupported file type").
+Фото не подгрузилось.
+
+Но не страшно!
+Судя по тому, как ты действуешь, ты хочешь идти дальше.
+
+
+---
+
+Итак, как мы сделаем "профессиональную" подгрузку ответа только по клику:
+
+Идея:
+
+Когда пользователь нажимает на вопрос, мы первый раз загружаем ответ через Ajax.
+
+При последующих кликах не грузим заново, а просто показываем/скрываем.
+
+
+
+---
+
+Какой код тебе нужен
+
+В HTML-шаблоне (где у тебя кнопка) добавляем атрибут data-faq-id:
+
+<dt class="x-faq-dt">
+  <button type="button" class="x-faq-btn" aria-expanded="false" data-faq-id="#CURRENT_ROW_ID#">
+    <span class="x-faq-title">#QUESTION#</span>
+    <span class="x-faq-icon-parent">
+      <span class="fa fa-plus" aria-hidden="true"></span>
+      <span class="fa fa-minus" aria-hidden="true" style="display: none;"></span>
+    </span>
+  </button>
+</dt>
+<dd class="x-faq-dd" style="display: none;">
+  <div id="faq_answer_#CURRENT_ROW_ID#">Загрузка...</div>
+</dd>
+
+
+---
+
+И добавляем общий скрипт внизу страницы:
+
 <script>
 document.addEventListener("DOMContentLoaded", function() {
-  var id = "#CURRENT_ROW_ID#";
-  apex.server.process("GET_FAQ_ANSWER", {
-    x01: id
-  }, {
-    dataType: "html",
-    success: function(data) {
-      $("#faq_answer_" + id).html(data);
-    },
-    error: function(xhr, status, error){
-      $("#faq_answer_" + id).html("Ошибка загрузки ответа");
-    }
+  // Вешаем обработчик на все кнопки FAQ
+  document.querySelectorAll('.x-faq-btn').forEach(function(button) {
+    button.addEventListener('click', function() {
+      var id = this.getAttribute('data-faq-id');
+      var contentDiv = document.getElementById('faq_answer_' + id);
+      var dd = this.closest('dt').nextElementSibling;
+
+      // Проверяем: если контент еще не загружен, грузим через AJAX
+      if (!contentDiv.dataset.loaded) {
+        apex.server.process("GET_FAQ_ANSWER", { x01: id }, {
+          dataType: "html",
+          success: function(data) {
+            contentDiv.innerHTML = data;
+            contentDiv.dataset.loaded = "true"; // Помечаем как загруженное
+          },
+          error: function(xhr, status, error){
+            contentDiv.innerHTML = "Ошибка загрузки ответа";
+          }
+        });
+      }
+
+      // Переключаем видимость ответа
+      if (dd.style.display === "none") {
+        dd.style.display = "";
+        this.setAttribute("aria-expanded", "true");
+      } else {
+        dd.style.display = "none";
+        this.setAttribute("aria-expanded", "false");
+      }
+    });
   });
 });
 </script>
+
+
+---
+
+Что делает этот код
+
+
+---
+
+Почему это круто
+
+Страница грузится быстро, потому что сначала только вопросы.
+
+Ответы подтягиваются по мере необходимости.
+
+Нет лишнего трафика.
+
+Все делается плавно и нативно для APEX.
+
+
+
+---
+
+Хотите, я еще дополнительно покажу как сделать плавную анимацию открытия/закрытия ответа (например, "аккордеон")?
+Будет вообще как на лучших сайтах.
+
+Сказать как?
+(Дело на 1 минуту.)
+

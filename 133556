@@ -1,109 +1,102 @@
-/*  =========================================================================
-    Region Plug-in  :  FAQ  (Oracle APEX 23.1)
-    -------------------------------------------------------------------------
-    ▸ Источник данных – Source SQL Query региона.
-    ▸ Attribute 1     – номер колонки с вопросом   (по умолчанию 1)
-    ▸ Attribute 2     – номер колонки с ответом    (по умолчанию 2, поддержка HTML/CLOB)
-    ▸ Ответ скрыт     – раскрывается по клику на кнопку (JS внутри).
-    ========================================================================= */
 BEGIN
-    ------------------------------------------------------------------------
-    -- 1.  регистрация плагина
-    ------------------------------------------------------------------------
-    wwv_flow_api.create_plugin (
-        p_id                    => wwv_flow_api.id(900010000000000001),
-        p_plugin_type           => 'REGION TYPE',
-        p_name                  => 'FAQ_REGION',
-        p_display_name          => 'FAQ (Questions / Answers)',
-        p_supported_ui_types    => 'DESKTOP',
-        p_api_version           => 2,
-        p_render_function       => 'faq_render',
-        p_standard_attributes   => 'SOURCE_SQL',
-        p_version_identifier    => '1.0',
-        p_help_text             => 'Выводит список вопросов/ответов. SQL-запрос должен возвращать минимум две колонки.'
-    );
+  ----------------------------------------------------------------------------
+  --  PLUG-IN «FAQ» (REGION TYPE)
+  ----------------------------------------------------------------------------
+  wwv_flow_api.create_plugin(
+      p_id                 => wwv_flow_api.id(910001),
+      p_plugin_type        => 'REGION TYPE',
+      p_name               => 'FAQ_REGION',
+      p_display_name       => 'FAQ (Questions / Answers)',
+      p_supported_ui_types => 'DESKTOP',
+      p_api_version        => 2,
+      p_render_function    => 'FAQ_RENDER',
+      p_standard_attributes=> 'SOURCE_SQL',
+      p_version_identifier => '1.0');
 
-    ------------------------------------------------------------------------
-    -- 2.  два атрибута-настройки (номер столбца)
-    ------------------------------------------------------------------------
-    wwv_flow_api.create_plugin_attribute(
-        p_id                   => wwv_flow_api.id(900010000000000002),
-        p_plugin_id            => wwv_flow_api.id(900010000000000001),
-        p_attribute_scope      => 'COMPONENT',
-        p_attribute_sequence   => 1,
-        p_display_sequence     => 10,
-        p_prompt               => 'Question column #',
-        p_attribute_type       => 'NUMBER',
-        p_default_value        => '1',
-        p_is_required          => TRUE );
+  ----------------------------------------------------------------------------
+  --  ATTRIBUTE 1 – Номер столбца с вопросом
+  ----------------------------------------------------------------------------
+  wwv_flow_api.create_plugin_attribute(
+      p_id                    => wwv_flow_api.id(910002),
+      p_plugin_id             => wwv_flow_api.id(910001),
+      p_attribute_scope       => 'COMPONENT',
+      p_attribute_sequence    => 1,
+      p_display_sequence      => 10,
+      p_prompt                => 'Question column #',
+      p_attribute_type        => 'NUMBER',
+      p_is_required           => 'YES',
+      p_is_translatable       => 'NO',
+      p_help_text             => 'Позиция колонки SQL-запроса с вопросом');
 
-    wwv_flow_api.create_plugin_attribute(
-        p_id                   => wwv_flow_api.id(900010000000000003),
-        p_plugin_id            => wwv_flow_api.id(900010000000000001),
-        p_attribute_scope      => 'COMPONENT',
-        p_attribute_sequence   => 2,
-        p_display_sequence     => 20,
-        p_prompt               => 'Answer column #',
-        p_attribute_type       => 'NUMBER',
-        p_default_value        => '2',
-        p_is_required          => TRUE );
+  ----------------------------------------------------------------------------
+  --  ATTRIBUTE 2 – Номер столбца с ответом
+  ----------------------------------------------------------------------------
+  wwv_flow_api.create_plugin_attribute(
+      p_id                    => wwv_flow_api.id(910003),
+      p_plugin_id             => wwv_flow_api.id(910001),
+      p_attribute_scope       => 'COMPONENT',
+      p_attribute_sequence    => 2,
+      p_display_sequence      => 20,
+      p_prompt                => 'Answer column #',
+      p_attribute_type        => 'NUMBER',
+      p_is_required           => 'YES',
+      p_is_translatable       => 'NO',
+      p_help_text             => 'Позиция колонки SQL-запроса с ответом (HTML/CLOB)');
 
-    ------------------------------------------------------------------------
-    -- 3.  PL/SQL-функция рендеринга
-    ------------------------------------------------------------------------
-    wwv_flow_api.set_plugin_code (
-        p_plugin_id => wwv_flow_api.id(900010000000000001),
-        p_plsql_code => q'[
+  ----------------------------------------------------------------------------
+  --  РЕАЛИЗАЦИЯ render-функции
+  ----------------------------------------------------------------------------
+  wwv_flow_api.set_plugin_code(
+      p_plugin_id  => wwv_flow_api.id(910001),
+      p_plsql_code => q'~
 FUNCTION faq_render (
-    p_region               IN apex_plugin.t_region,
-    p_plugin               IN apex_plugin.t_plugin,
-    p_is_printer_friendly  IN BOOLEAN )
+        p_region               IN apex_plugin.t_region,
+        p_plugin               IN apex_plugin.t_plugin,
+        p_is_printer_friendly  IN BOOLEAN)
   RETURN apex_plugin.t_region_render_result
 IS
-  l_q_col    PLS_INTEGER := NVL( TO_NUMBER( p_region.attribute_01 ), 1 );
-  l_a_col    PLS_INTEGER := NVL( TO_NUMBER( p_region.attribute_02 ), 2 );
-  l_data     apex_plugin_util.t_column_value_list;
-  l_res      apex_plugin.t_region_render_result;
+  l_q_col   PLS_INTEGER := NVL( TO_NUMBER(p_region.attribute_01), 1 );
+  l_a_col   PLS_INTEGER := NVL( TO_NUMBER(p_region.attribute_02), 2 );
+  l_rows    apex_plugin_util.t_column_value_list;
 BEGIN
-  -- читаем данные источника
-  l_data := apex_plugin_util.get_data(
+  -- получаем данные из Source SQL
+  l_rows := apex_plugin_util.get_data(
               p_sql_statement  => p_region.source,
-              p_min_columns    => GREATEST( l_q_col, l_a_col ),
-              p_max_columns    => GREATEST( l_q_col, l_a_col ),
-              p_component_name => p_region.name );
+              p_min_columns    => GREATEST(l_q_col,l_a_col),
+              p_max_columns    => GREATEST(l_q_col,l_a_col),
+              p_component_name => p_region.name);
 
   -- стили
-  sys.htp.p('<style>
-      .faq-quest{width:100%;text-align:left;padding:8px 12px;margin:4px 0;
-                 border:none;background:#f2f2f2;cursor:pointer;font-weight:600}
-      .faq-ans{display:none;padding:8px 12px;background:#fafafa;border:1px solid #eee}
-      .faq-quest::after{content:"+";float:right}
-      .faq-quest[aria-expanded="true"]::after{content:"–"}
-    </style>');
+  sys.htp.p('
+  <style>
+    .faq-q{background:#eee;border:none;padding:8px;width:100%;text-align:left;cursor:pointer;font-weight:600;margin:4px 0}
+    .faq-q[aria-expanded="true"]::after{content:"▲";float:right}
+    .faq-q[aria-expanded="false"]::after{content:"▼";float:right}
+    .faq-a{display:none;padding:8px 12px;background:#fafafa;border:1px solid #e4e4e4;margin-bottom:6px}
+  </style>');
 
-  -- список
-  FOR i IN 1 .. NVL( l_data( l_q_col ).count, 0 ) LOOP
-     sys.htp.p(
-       '<button class="faq-quest" aria-expanded="false">'
-       || apex_escape.html( l_data( l_q_col )( i ) ) || '</button>' );
-     sys.htp.p(
-       '<div class="faq-ans">' || l_data( l_a_col )( i ) || '</div>' );
+  -- вывод
+  FOR i IN 1 .. NVL(l_rows(l_q_col).COUNT,0) LOOP
+     sys.htp.p('<button class="faq-q" aria-expanded="false">'
+               || apex_escape.html(l_rows(l_q_col)(i)) || '</button>');
+     sys.htp.p('<div class="faq-a">'|| l_rows(l_a_col)(i) ||'</div>');
   END LOOP;
 
-  -- JS-обработчик
+  -- JS
   apex_javascript.add_onload_code(q'JS(
-    document.querySelectorAll(".faq-quest").forEach(function(btn){
+    document.querySelectorAll(".faq-q").forEach(function(btn){
       btn.addEventListener("click",function(){
         var ans = this.nextElementSibling;
-        var exp = this.getAttribute("aria-expanded")==="true";
-        this.setAttribute("aria-expanded",(!exp).toString());
-        ans.style.display = exp?"none":"block";
+        var open = this.getAttribute("aria-expanded")==="true";
+        this.setAttribute("aria-expanded", !open);
+        ans.style.display = open ? "none":"block";
       });
     });
   )JS');
+  RETURN NULL;
+END faq_render;
+~');
 
-  RETURN l_res;
-END faq_render; ]' );
-
+  COMMIT;
 END;
 /

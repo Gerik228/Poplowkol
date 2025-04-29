@@ -1,3 +1,109 @@
+SET DEFINE OFF;
+SET VERIFY OFF;
+SET FEEDBACK OFF;
+WHENEVER SQLERROR EXIT SQL.SQLCODE ROLLBACK;
+
+-- Начало импорта плагина
+BEGIN
+  wwv_flow_api.import_begin(
+    p_version_yyyy_mm_dd => '2023.05.17',
+    p_release            => '23.1.0.00.00',
+    p_default_workspace_id => 0,
+    p_default_application_id => 0,
+    p_default_id_offset  => 0,
+    p_default_owner      => 'APEX_230100'
+  );
+END;
+/
+
+-- Создание плагина типа REGION (FAQ)
+BEGIN
+  wwv_flow_api.create_plugin(
+    p_id              => wwv_flow_api.id(101),   -- уникальный ID (можно использовать wwv_flow_api.id)
+    p_plugin_type     => 'REGION TYPE',
+    p_name            => 'FAQ',                  -- внутреннее имя плагина
+    p_display_name    => 'FAQ Section',          -- отображаемое имя
+    p_supported_ui_types => 'DESKTOP',           -- поддерживаемые платформы
+    p_standard_attributes => 'SOURCE_SQL',       -- стандартный атрибут для Source SQL Query0
+    p_substitute_attributes => TRUE,
+    p_version_identifier => '1.0',
+    p_plsql_code      => wwv_flow_utilities.join(wwv_flow_t_varchar2(
+      'FUNCTION faq_render(',
+      '   p_region             IN apex_plugin.t_region,',
+      '   p_plugin             IN apex_plugin.t_plugin,',
+      '   p_is_printer_friendly IN BOOLEAN',
+      ') RETURN apex_plugin.t_region_render_result IS',
+      '   l_data   apex_plugin_util.t_column_value_list2;',
+      '   l_result apex_plugin.t_region_render_result;',
+      'BEGIN',
+      '   -- Отладка (при включённом режиме DEBUG выводит параметры)',
+      '   apex_plugin_util.debug_region(p_plugin => p_plugin,',
+      '                                p_region => p_region,',
+      '                                p_is_printer_friendly => p_is_printer_friendly);',
+      '   -- Если задан SQL-источник, выполняем запрос (две колонки: вопрос, ответ)',
+      '   IF p_region.source IS NOT NULL THEN',
+      '     l_data := apex_plugin_util.get_data2(',
+      '       p_sql_statement    => p_region.source,',
+      '       p_min_columns      => 2,',
+      '       p_max_columns      => 2,',
+      '       p_component_name   => p_region.name',
+      '     );',
+      '     -- Рендерим список FAQ',
+      '     htp.prn(''<div class="faq-list">'');',
+      '     FOR i IN 1 .. l_data(1).value_list.count LOOP',
+      '       htp.prn(''<div class="faq-item">'');',
+      '       -- Вопрос',
+      '       htp.prn(''<div class="faq-question">'' ||',
+      '         apex_plugin_util.escape(p_value => l_data(1).value_list(i), p_escape => p_region.escape_output) ||',
+      '         ''</div>'');',
+      '       -- Ответ',
+      '       htp.prn(''<div class="faq-answer">'' ||',
+      '         apex_plugin_util.escape(p_value => l_data(2).value_list(i), p_escape => p_region.escape_output) ||',
+      '         ''</div>'');',
+      '       htp.prn(''</div>'');',
+      '     END LOOP;',
+      '     htp.prn(''</div>'');',
+      '   END IF;',
+      '   RETURN l_result;',
+      'END faq_render;'
+    )),
+    p_api_version     => 2,
+    p_render_function => 'faq_render'
+  );
+END;
+/
+
+-- Завершение импорта плагина
+BEGIN
+  wwv_flow_api.import_end(
+    p_auto_install_sup_obj => nvl(wwv_flow_application_install.get_auto_install_sup_obj, FALSE),
+    p_is_component_import  => TRUE
+  );
+  COMMIT;
+END;
+/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 set define off verify off feedback off whenever sqlerror exit sql.sqlcode rollback
 --------------------------------------------------------------------------------
 -- ORACLE Application Express (APEX) export file

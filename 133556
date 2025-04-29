@@ -1,139 +1,68 @@
-Вот подробная инструкция для Oracle APEX 23.1, как реализовать открытие ссылок из DataLens в той же вкладке, используя промежуточную страницу в APEX. Этот способ обходит ограничение target="_blank".
-
-
----
-
-Цель:
-
-Пользователь кликает на ссылку в таблице DataLens, и она открывается в том же окне APEX-приложения (внутри основного окна, не в новой вкладке).
-
-
----
-
-Структура решения:
-
-1. Создать промежуточную APEX-страницу page_router.
-
-
-2. Передавать в нее параметры из DataLens (например, id, type, tab и т.д.).
-
-
-3. На странице APEX сработает редирект на нужную страницу, на основании логики или параметров.
-
-
-4. В DataLens настраивается URL()-поле, которое ведет на page_router.
-
-
-
-
----
-
-Шаг 1: Создание промежуточной страницы в APEX
-
-1. В APEX открой ваше приложение.
-
-
-2. Нажмите "Создать страницу" → выберите "Пустая страница".
-
-
-3. Назовите её Page Router (например, ID = 99).
-
-
-4. Убедитесь, что она доступна публично (если дашборд DataLens вне логина), либо включите авторизацию по сессии.
-
-
-
-
----
-
-Шаг 2: Добавление параметров страницы
-
-1. Перейди в свойства страницы 99.
-
-
-2. В разделе "Процессинг" > "Параметры страницы" добавь параметры, например:
-
-P99_ID (тип: Text)
-
-P99_TAB (если есть)
-
-и т.д.
-
-
-
-
-
----
-
-Шаг 3: Создание динамического действия для редиректа
-
-1. На странице 99, перейди в "Обработчики" > "Динамические действия".
-
-
-2. Создай новый:
-
-Событие: Page Load
-
-Действие: Execute JavaScript Code
-
-
-
-3. Вставь код (пример):
-
-
-
-var id = apex.item("P99_ID").getValue();
-var tab = apex.item("P99_TAB").getValue();
-
-// Сформируй URL нужной страницы APEX, например страница 10
-var targetUrl = "f?p=100:10:::NO::P10_ID:" + id;
-
-// Переход на страницу
-window.location.href = targetUrl;
-
-Ты можешь расширить это условной логикой:
-
-if (tab === 'analytics') {
-  window.location.href = "f?p=100:20:::NO::P20_ID:" + id;
-} else {
-  window.location.href = "f?p=100:10:::NO::P10_ID:" + id;
-}
-
-
----
-
-Шаг 4: Настройка DataLens
-
-1. В поле URL в карточке/таблице добавь формулу:
-
-
-
-'URL("https://your-apex-domain.com/ords/f?p=100:99:::NO::P99_ID:" + str([id]) + '")'
-
-Если ты передаешь несколько параметров:
-
-'URL("https://your-apex-domain.com/ords/f?p=100:99:::NO::P99_ID:" + str([id]) + '&P99_TAB=' + [tab])'
-
-
----
-
-Результат:
-
-1. Пользователь нажимает на ссылку в DataLens.
-
-
-2. Попадает на страницу 99 APEX-приложения.
-
-
-3. JavaScript на этой странице автоматически редиректит его на нужную целевую страницу (в зависимости от параметров).
-
-
-4. Всё происходит в текущей вкладке.
-
-
-
-
----
-
-Если хочешь, я могу помочь с примером URL, подставляя конкретные поля из твоего датасета.
-
+begin
+  wwv_flow_api.import_begin(
+    p_version_yyyy_mm_dd=>'2023.01.01',
+    p_release=>'23.1.0',
+    p_default_workspace_id=>null,
+    p_default_application_id=>null,
+    p_default_owner=>null
+  );
+end;
+/
+
+begin
+  wwv_flow_api.create_plugin(
+    p_id=>wwv_flow_api.id(1000001),
+    p_plugin_type=>'REGION TYPE',
+    p_name=>'COM.EXAMPLE.SQL_TITLE_DESC',
+    p_display_name=>'SQL Title/Description Region',
+    p_supported_ui_types=>'DESKTOP:JQM_SMARTPHONE',
+    p_image_prefix=>'fa fa-list',
+    p_standard_attributes=>'SOURCE_SQL',
+    p_plsql_code=>wwv_flow_utilities.join(wwv_flow_t_varchar2(
+      'BEGIN',
+      '  /* Получаем данные из SQL-запроса пользователя */',
+      '  l_data := apex_plugin_util.get_data(p_region.source, 1, 10000, p_region.name);',
+      '  /* Выводим результат в виде HTML-списка */',
+      '  htp.p(''<ul>'');',
+      '  FOR i IN l_data.FIRST..l_data.LAST LOOP',
+      '    htp.p(''<li><h3>'' || l_data(i)(TO_NUMBER(p_region.attribute_01)) || ''</h3>'');',
+      '    htp.p(''<p>''  || l_data(i)(TO_NUMBER(p_region.attribute_02)) || ''</p></li>'');',
+      '  END LOOP;',
+      '  htp.p(''</ul>'');',
+      '  RETURN NULL;',
+      'END;'
+    ))
+  );
+
+  -- Атрибуты для выбора столбцов Title и Description
+  wwv_flow_api.create_plugin_attribute(
+    p_id=>wwv_flow_api.id(1000002),
+    p_plugin_id=>wwv_flow_api.id(1000001),
+    p_attribute_scope=>'COMPONENT',
+    p_attribute_sequence=>1, p_display_sequence=>10,
+    p_prompt=>'Title Column (номер столбца)',
+    p_attribute_type=>'NUMBER',
+    p_is_required=>TRUE,
+    p_default_value=>'1'
+  );
+  wwv_flow_api.create_plugin_attribute(
+    p_id=>wwv_flow_api.id(1000003),
+    p_plugin_id=>wwv_flow_api.id(1000001),
+    p_attribute_scope=>'COMPONENT',
+    p_attribute_sequence=>2, p_display_sequence=>20,
+    p_prompt=>'Description Column (номер столбца)',
+    p_attribute_type=>'NUMBER',
+    p_is_required=>FALSE,
+    p_default_value=>'2'
+  );
+end;
+/
+
+begin
+  wwv_flow_api.import_end(
+    p_auto_install_sup_obj=>nvl(wwv_flow_application_install.get_auto_install_sup_obj, false),
+    p_is_component_import=>FALSE
+  );
+  commit;
+end;
+/

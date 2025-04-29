@@ -1,3 +1,218 @@
+set define off verify off feedback off whenever sqlerror exit sql.sqlcode rollback
+--------------------------------------------------------------------------------
+-- ORACLE Application Express (APEX) export file
+--
+-- You should run the script connected to SQL*Plus as the Oracle user 
+-- APEX_230100 or as the owner (parsing schema) of the application.
+--
+-- NOTE: Calls to apex_application_install override the defaults below.
+--------------------------------------------------------------------------------
+begin
+    wwv_flow_api.import_begin (
+        p_version_yyyy_mm_dd=>'2024.05.01',
+        p_release=>'23.1.0.00.00',
+        p_default_workspace_id=>1000000000000000,
+        p_default_application_id=>100,
+        p_default_owner=>'WORKSPACE' );
+end;
+/
+prompt --application/shared_components/plugins/region_type/faq_region
+begin
+    wwv_flow_api.create_plugin(
+        p_id=>wwv_flow_api.id(11111111111111111),
+        p_plugin_type=>'REGION TYPE',
+        p_name=>'FAQ_REGION',
+        p_display_name=>'FAQ (Часто задаваемые вопросы)',
+        p_supported_ui_types=>'DESKTOP:JQM_SMARTPHONE',
+        p_plsql_code=>wwv_flow_string.join(wwv_flow_t_varchar2(
+            'function render (',
+            '    p_region in apex_plugin.t_region,',
+            '    p_plugin in apex_plugin.t_plugin,',
+            '    p_is_printer_friendly in boolean',
+            ') return apex_plugin.t_region_render_result as',
+            '    v_data apex_plugin_util.t_column_value_list2;',
+            '    l_data_types apex_plugin_util.t_data_type_list;',
+            '    l_result apex_plugin.t_region_render_result;',
+            '    l_search_id varchar2(255);',
+            '    title_idx pls_integer := to_number(p_region.attribute_01);',
+            '    desc_idx pls_integer := to_number(p_region.attribute_02);',
+            '    max_idx pls_integer := greatest(title_idx, desc_idx);',
+            '    q_text varchar2(32767);',
+            '    a_text clob;',
+            '    chunk varchar2(32767);',
+            '    offset integer;',
+            'begin',
+            '    -- determine unique search input ID for this region',
+            '    if p_region.static_id is not null then',
+            '       l_search_id := p_region.static_id || ''_search'';',
+            '    else',
+            '       l_search_id := ''FAQ_'' || p_region.id || ''_search'';',
+            '    end if;',
+            '    -- define data types for columns (description as CLOB)',
+            '    for i in 1..max_idx loop',
+            '       if i = desc_idx then',
+            '           l_data_types(i) := apex_plugin_util.c_data_type_clob;',
+            '       else',
+            '           l_data_types(i) := apex_plugin_util.c_data_type_varchar2;',
+            '       end if;',
+            '    end loop;',
+            '    -- fetch query results',
+            '    v_data := apex_plugin_util.get_data2(',
+            '        p_sql_statement => p_region.source,',
+            '        p_min_columns  => max_idx,',
+            '        p_max_columns  => max_idx,',
+            '        p_data_type_list => l_data_types,',
+            '        p_component_name => p_region.name );',
+            '    -- generate HTML output',
+            '    sys.htp.p(''<div class="faq-region">'');',
+            '    sys.htp.p(''<div class="faq-search-container"><input type="text" id="'' || l_search_id || ''" placeholder="Поиск..."></div>'');',
+            '    sys.htp.p(''<ul class="faq-list">'');',
+            '    if v_data.exists(title_idx) then',
+            '       for r in 1..v_data(title_idx).count loop',
+            '          q_text := v_data(title_idx)(r);',
+            '          a_text := v_data(desc_idx)(r);',
+            '          if p_region.escape_output then',
+            '             q_text := sys.htf.escape_sc(q_text);',
+            '          end if;',
+            '          sys.htp.p(''<li class="faq-item faq-hidden"><div class="faq-question">'' || q_text || ''</div><div class="faq-answer">'');',
+            '          offset := 1;',
+            '          if p_region.escape_output then',
+            '             while offset <= dbms_lob.getlength(a_text) loop',
+            '                chunk := sys.htf.escape_sc(dbms_lob.substr(a_text, 30000, offset));',
+            '                sys.htp.p(chunk);',
+            '                offset := offset + 30000;',
+            '             end loop;',
+            '          else',
+            '             while offset <= dbms_lob.getlength(a_text) loop',
+            '                chunk := dbms_lob.substr(a_text, 30000, offset);',
+            '                sys.htp.p(chunk);',
+            '                offset := offset + 30000;',
+            '             end loop;',
+            '          end if;',
+            '          sys.htp.p(''</div></li>'');',
+            '       end loop;',
+            '    end if;',
+            '    sys.htp.p(''</ul>'');',
+            '    -- add client-side script for toggling and search functionality',
+            '    sys.htp.p(''<script>'');',
+            '    sys.htp.p(''(function(){'');',
+            '    sys.htp.p(''  var searchInput = document.getElementById("'' || l_search_id || ''");'');',
+            '    sys.htp.p(''  if(searchInput){'');',
+            '    sys.htp.p(''    searchInput.addEventListener("input", function(){'');',
+            '    sys.htp.p(''      var filter = this.value.toLowerCase();'');',
+            '    sys.htp.p(''      var container = this.closest(".faq-region");'');',
+            '    sys.htp.p(''      var items = container.querySelectorAll(".faq-item");'');',
+            '    sys.htp.p(''      items.forEach(function(item){'');',
+            '    sys.htp.p(''        var q = item.querySelector(".faq-question").textContent.toLowerCase();'');',
+            '    sys.htp.p(''        var a = item.querySelector(".faq-answer").textContent.toLowerCase();'');',
+            '    sys.htp.p(''        if(q.indexOf(filter) > -1 || a.indexOf(filter) > -1){'');',
+            '    sys.htp.p(''          item.style.display = "";'');',
+            '    sys.htp.p(''        } else {'');',
+            '    sys.htp.p(''          item.style.display = "none";'');',
+            '    sys.htp.p(''        }'');',
+            '    sys.htp.p(''      });'');',
+            '    sys.htp.p(''    });'');',
+            '    sys.htp.p(''  }'');',
+            '    sys.htp.p(''  document.querySelectorAll(".faq-question").forEach(function(el){'');',
+            '    sys.htp.p(''    el.addEventListener("click", function(){'');',
+            '    sys.htp.p(''      var item = this.parentElement;'');',
+            '    sys.htp.p(''      if(item.classList.contains("faq-hidden")){'');',
+            '    sys.htp.p(''        item.classList.remove("faq-hidden");'');',
+            '    sys.htp.p(''      } else {'');',
+            '    sys.htp.p(''        item.classList.add("faq-hidden");'');',
+            '    sys.htp.p(''      }'');',
+            '    sys.htp.p(''    });'');',
+            '    sys.htp.p(''  });'');',
+            '    sys.htp.p(''})();'');',
+            '    sys.htp.p(''</script>'');',
+            '    sys.htp.p(''</div>'');',
+            '    l_result.navigable_dom_id := l_search_id;',
+            '    return l_result;',
+            'end render;'
+        )),
+        p_render_function=>'render',
+        p_api_version=>2,
+        p_standard_attributes=>'SOURCE_SQL',
+        p_substitute_attributes=>false,
+        p_version_identifier=>'1.0',
+        p_help_text=>'Плагин региона FAQ: отображает список вопросов и ответов с поиском и разворачиванием ответов.'
+    );
+    wwv_flow_api.create_plugin_attribute(
+        p_id=>wwv_flow_api.id(11111111111111112),
+        p_plugin_id=>wwv_flow_api.id(11111111111111111),
+        p_attribute_scope=>'COMPONENT',
+        p_attribute_sequence=>1,
+        p_display_sequence=>10,
+        p_prompt=>'Колонка вопроса',
+        p_attribute_type=>'SELECT LIST',
+        p_is_required=>true,
+        p_default_value=>'1',
+        p_lov_type=>'STATIC'
+    );
+    -- values for attribute 1 static LOV (column numbers 1-10)
+    wwv_flow_api.create_plugin_attr_value( p_id=>wwv_flow_api.id(11111111111111121), p_plugin_attribute_id=>wwv_flow_api.id(11111111111111112), p_value=>'1', p_display_value=>'1' );
+    wwv_flow_api.create_plugin_attr_value( p_id=>wwv_flow_api.id(11111111111111122), p_plugin_attribute_id=>wwv_flow_api.id(11111111111111112), p_value=>'2', p_display_value=>'2' );
+    wwv_flow_api.create_plugin_attr_value( p_id=>wwv_flow_api.id(11111111111111123), p_plugin_attribute_id=>wwv_flow_api.id(11111111111111112), p_value=>'3', p_display_value=>'3' );
+    wwv_flow_api.create_plugin_attr_value( p_id=>wwv_flow_api.id(11111111111111124), p_plugin_attribute_id=>wwv_flow_api.id(11111111111111112), p_value=>'4', p_display_value=>'4' );
+    wwv_flow_api.create_plugin_attr_value( p_id=>wwv_flow_api.id(11111111111111125), p_plugin_attribute_id=>wwv_flow_api.id(11111111111111112), p_value=>'5', p_display_value=>'5' );
+    wwv_flow_api.create_plugin_attr_value( p_id=>wwv_flow_api.id(11111111111111126), p_plugin_attribute_id=>wwv_flow_api.id(11111111111111112), p_value=>'6', p_display_value=>'6' );
+    wwv_flow_api.create_plugin_attr_value( p_id=>wwv_flow_api.id(11111111111111127), p_plugin_attribute_id=>wwv_flow_api.id(11111111111111112), p_value=>'7', p_display_value=>'7' );
+    wwv_flow_api.create_plugin_attr_value( p_id=>wwv_flow_api.id(11111111111111128), p_plugin_attribute_id=>wwv_flow_api.id(11111111111111112), p_value=>'8', p_display_value=>'8' );
+    wwv_flow_api.create_plugin_attr_value( p_id=>wwv_flow_api.id(11111111111111129), p_plugin_attribute_id=>wwv_flow_api.id(11111111111111112), p_value=>'9', p_display_value=>'9' );
+    wwv_flow_api.create_plugin_attr_value( p_id=>wwv_flow_api.id(11111111111111130), p_plugin_attribute_id=>wwv_flow_api.id(11111111111111112), p_value=>'10', p_display_value=>'10' );
+    wwv_flow_api.create_plugin_attribute(
+        p_id=>wwv_flow_api.id(11111111111111113),
+        p_plugin_id=>wwv_flow_api.id(11111111111111111),
+        p_attribute_scope=>'COMPONENT',
+        p_attribute_sequence=>2,
+        p_display_sequence=>20,
+        p_prompt=>'Колонка ответа',
+        p_attribute_type=>'SELECT LIST',
+        p_is_required=>true,
+        p_default_value=>'2',
+        p_lov_type=>'STATIC'
+    );
+    -- values for attribute 2 static LOV (column numbers 1-10)
+    wwv_flow_api.create_plugin_attr_value( p_id=>wwv_flow_api.id(11111111111111131), p_plugin_attribute_id=>wwv_flow_api.id(11111111111111113), p_value=>'1', p_display_value=>'1' );
+    wwv_flow_api.create_plugin_attr_value( p_id=>wwv_flow_api.id(11111111111111132), p_plugin_attribute_id=>wwv_flow_api.id(11111111111111113), p_value=>'2', p_display_value=>'2' );
+    wwv_flow_api.create_plugin_attr_value( p_id=>wwv_flow_api.id(11111111111111133), p_plugin_attribute_id=>wwv_flow_api.id(11111111111111113), p_value=>'3', p_display_value=>'3' );
+    wwv_flow_api.create_plugin_attr_value( p_id=>wwv_flow_api.id(11111111111111134), p_plugin_attribute_id=>wwv_flow_api.id(11111111111111113), p_value=>'4', p_display_value=>'4' );
+    wwv_flow_api.create_plugin_attr_value( p_id=>wwv_flow_api.id(11111111111111135), p_plugin_attribute_id=>wwv_flow_api.id(11111111111111113), p_value=>'5', p_display_value=>'5' );
+    wwv_flow_api.create_plugin_attr_value( p_id=>wwv_flow_api.id(11111111111111136), p_plugin_attribute_id=>wwv_flow_api.id(11111111111111113), p_value=>'6', p_display_value=>'6' );
+    wwv_flow_api.create_plugin_attr_value( p_id=>wwv_flow_api.id(11111111111111137), p_plugin_attribute_id=>wwv_flow_api.id(11111111111111113), p_value=>'7', p_display_value=>'7' );
+    wwv_flow_api.create_plugin_attr_value( p_id=>wwv_flow_api.id(11111111111111138), p_plugin_attribute_id=>wwv_flow_api.id(11111111111111113), p_value=>'8', p_display_value=>'8' );
+    wwv_flow_api.create_plugin_attr_value( p_id=>wwv_flow_api.id(11111111111111139), p_plugin_attribute_id=>wwv_flow_api.id(11111111111111113), p_value=>'9', p_display_value=>'9' );
+    wwv_flow_api.create_plugin_attr_value( p_id=>wwv_flow_api.id(11111111111111140), p_plugin_attribute_id=>wwv_flow_api.id(11111111111111113), p_value=>'10', p_display_value=>'10' );
+end;
+/
+begin
+    wwv_flow_api.import_end(
+        p_auto_install_sup_obj => nvl(wwv_flow_application_install.get_auto_install_sup_obj, false),
+        p_is_component_import => true );
+    commit;
+end;
+/
+set verify on feedback on define on
+prompt ...done
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 -- APEX Plug-in Export: Region Type "FAQ" (APEX 23.1.0)
 set define off verify off feedback off
 

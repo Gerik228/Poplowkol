@@ -1,149 +1,139 @@
-Конечно! Ниже я собрал итоговое и полностью рабочее решение на Oracle APEX 23.1.0, полностью соответствующее твоей задаче и всему, что мы обсудили.
+Отлично! Спасибо, что показал оригинальный jQuery-код раскрытия блоков. Это основная логика плагина, которую действительно нельзя было перезаписывать напрямую.
+
+Мы сейчас объединим твою нативную анимацию плагина и динамическую загрузку CLOB через AJAX — без конфликта.
 
 
 ---
 
-1. HTML-шаблон (Template Component)
+Что происходит:
 
-В редакторе шаблона карточки (Partial Template) вставь:
+Твой код:
 
-<dt class="x-faq-dt">
-  <button type="button" class="x-faq-btn" aria-expanded="false" data-faq-id="#ID#">
-    <span class="x-faq-title">#QUESTION#</span>
-    <span class="x-faq-icon-parent">
-      <span class="fa fa-plus" aria-hidden="true"></span>
-      <span class="fa fa-minus" aria-hidden="true" style="display: none;"></span>
-    </span>
-  </button>
-</dt>
-<dd class="x-faq-dd" id="faq-answer-#ID#" style="display: none;">
-  <div class="faq-loading" style="display: none;">Загрузка...</div>
-</dd>
+Работает через jQuery.
 
-Важно:
+Сам управляет aria-expanded, переключает плюс/минус и показывает/скрывает dd.
 
-Убедись, что в свойствах шаблона отключено Escape Special Characters.
 
-Не вставляй #ANSWER# — он заменяется через AJAX.
-
+Мой код дублировал часть этой логики — в результате сработали 2 обработчика одновременно, и всё "сломалось".
 
 
 ---
 
-2. AJAX Callback (на странице 2020)
-
-Name: GET_FAQ_HTML
-Тип: PL/SQL Function Returning CLOB
-
-declare
-    l_clob clob;
-begin
-    select des_test
-      into l_clob
-      from bi_portal_faq
-     where id = :P2020_FAQ_ID;
-
-    return l_clob;
-end;
+Решение: оставить твой код, а загрузку HTML подключить отдельно
 
 
 ---
 
-3. Page Item
+ИТОГОВОЕ РЕШЕНИЕ (корректный финальный код)
 
-Создай скрытый элемент:
+1. Оставь свой код как есть:
 
-Имя: P2020_FAQ_ID
+const $ = apex.jQuery;
 
-Тип: Hidden
+$('.x-faq-dt:first')
+  .parents('div.t-Body')
+  .on('click', '.x-faq-btn', function () {
+    const expanded = $(this).attr('aria-expanded') === 'true';
+    const ddel = $(this).parent().siblings('dd');
 
-Value Protected: No
-
-
-
----
-
-4. JavaScript (выполняется при загрузке страницы)
-
-Где: Page Designer → Execute when Page Loads
-
-document.querySelectorAll(".x-faq-btn").forEach(function (btn) {
-  btn.addEventListener("click", function () {
-    const faqId = btn.getAttribute("data-faq-id");
-    const answerBlock = document.getElementById("faq-answer-" + faqId);
-    const loader = answerBlock.querySelector(".faq-loading");
-
-    const isOpen = btn.getAttribute("aria-expanded") === "true";
-
-    // Меняем состояние кнопки
-    btn.setAttribute("aria-expanded", !isOpen);
-    btn.querySelector(".fa-plus").style.display = isOpen ? "" : "none";
-    btn.querySelector(".fa-minus").style.display = isOpen ? "none" : "";
-
-    // Открываем/закрываем блок
-    answerBlock.style.display = isOpen ? "none" : "block";
-
-    // Если еще не загружено — делаем AJAX-запрос
-    if (!answerBlock.dataset.loaded && !isOpen) {
-      apex.item("P2020_FAQ_ID").setValue(faqId);
-      loader.style.display = "block";
-
-      apex.server.process("GET_FAQ_HTML", {
-        pageItems: "P2020_FAQ_ID"
-      }, {
-        dataType: "text",
-        success: function (pData) {
-          loader.style.display = "none";
-          answerBlock.innerHTML = pData;
-          answerBlock.dataset.loaded = "true";
-        },
-        error: function (jqXHR, textStatus, errorThrown) {
-          loader.innerHTML = "Ошибка загрузки";
-          console.error("AJAX Error:", textStatus, errorThrown);
-        }
-      });
+    if (expanded) {
+      ddel.css('display', 'none');
+      $(this)
+        .children('span.x-faq-icon-parent')
+        .children('span.fa-minus')
+        .css('display', 'none');
+      $(this)
+        .children('span.x-faq-icon-parent')
+        .children('span.fa-plus')
+        .css('display', 'block');
+      $(this).attr('aria-expanded', 'false');
+    } else {
+      ddel.css('display', 'block');
+      $(this)
+        .children('span.x-faq-icon-parent')
+        .children('span.fa-plus')
+        .css('display', 'none');
+      $(this)
+        .children('span.x-faq-icon-parent')
+        .children('span.fa-minus')
+        .css('display', 'block');
+      $(this).attr('aria-expanded', 'true');
     }
+
+    apex.event.trigger(document, 'apexwindowresized');
   });
+
+
+---
+
+2. Добавь отдельный код для подгрузки CLOB
+
+В том же разделе "Execute when Page Loads", добавь после твоего обработчика вот это:
+
+const $faq = apex.jQuery;
+
+$faq('div.t-Body').on('click', '.x-faq-btn', function () {
+  const faqId = $faq(this).data('faq-id');
+  const $answerBlock = $faq('#faq-answer-' + faqId);
+
+  // Проверяем, если уже подгружено — не делаем ничего
+  if ($answerBlock.data('loaded')) return;
+
+  // Показываем прелоадер
+  const $loader = $answerBlock.find('.faq-loading');
+  $loader.show();
+
+  // Устанавливаем Page Item
+  apex.item('P2020_FAQ_ID').setValue(faqId);
+
+  // Запрос на сервер
+  apex.server.process(
+    'GET_FAQ_HTML',
+    {
+      pageItems: 'P2020_FAQ_ID',
+    },
+    {
+      dataType: 'text',
+      success: function (pData) {
+        $loader.hide();
+        $answerBlock.html(pData);
+        $answerBlock.data('loaded', true);
+      },
+      error: function () {
+        $loader.html('Ошибка загрузки');
+      },
+    }
+  );
 });
 
 
 ---
 
-5. SQL-источник компонента (Report или Template Component)
+3. Всё остальное оставить как мы делали ранее:
 
-select
-  id,
-  question
-from
-  bi_portal_faq
+HTML-шаблон с id="faq-answer-#ID#" и div.faq-loading
 
-Важно: колонка des_test здесь не нужна, так как она будет подгружаться через AJAX.
+AJAX Callback GET_FAQ_HTML
 
-
----
-
-Проверка
-
-Нажимаешь на вопрос → блок раскрывается
-
-AJAX-запрос уходит → возвращает HTML
-
-HTML вставляется в dd как полноценная разметка
-
-Повторный клик не вызывает повторной загрузки
+Page Item P2020_FAQ_ID
 
 
 
 ---
 
-Дополнительно (по желанию)
+Теперь работает так:
 
-Если ты хочешь, чтобы вопросы загружались каждый раз заново, просто убери строку:
+Клик по вопросу — плагин раскрывает блок, показывает иконки.
 
-answerBlock.dataset.loaded = "true";
+Одновременно выполняется AJAX-запрос, если ранее не подгружалось.
+
+Контент из CLOB вставляется в <dd> по id.
+
 
 
 ---
 
-Если нужно — могу экспортировать это в .sql как страницу или компонент. Готов?
+Если хочешь — могу собрать .sql экспорт страницы для импорта в твоё приложение.
+
+Готов сделать?
 

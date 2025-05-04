@@ -1,56 +1,11 @@
-Конечно! Ниже — полная и актуальная инструкция, полностью адаптированная к твоей HTML-разметке из снимка и под Oracle APEX 23.1.0.
+Конечно! Ниже я собрал итоговое и полностью рабочее решение на Oracle APEX 23.1.0, полностью соответствующее твоей задаче и всему, что мы обсудили.
 
 
 ---
 
-Цель
+1. HTML-шаблон (Template Component)
 
-Показывать HTML-контент из поля des_test (тип CLOB) таблицы bi_portal_faq по клику на кнопку в FAQ-шаблоне. Контент должен подгружаться динамически через AJAX и вставляться в соответствующий блок <dd class="x-faq-dd">.
-
-
----
-
-Шаг 1. Добавь скрытый Page Item
-
-Имя: PXX_FAQ_ID (где XX — номер страницы)
-
-Тип: Hidden
-
-Value Protected: No
-
-Используется для передачи ID в AJAX callback
-
-
-
----
-
-Шаг 2. Создай AJAX Callback
-
-Где: Page Processing → AJAX Callback
-
-Имя: GET_FAQ_HTML
-
-Тип: PL/SQL Function Returning CLOB
-
-Код:
-
-declare
-    l_clob clob;
-begin
-    select des_test
-      into l_clob
-      from bi_portal_faq
-     where id = :PXX_FAQ_ID;
-
-    return l_clob;
-end;
-
-
----
-
-Шаг 3. Измени HTML-шаблон Template Component
-
-Твоя текущая разметка + изменения:
+В редакторе шаблона карточки (Partial Template) вставь:
 
 <dt class="x-faq-dt">
   <button type="button" class="x-faq-btn" aria-expanded="false" data-faq-id="#ID#">
@@ -65,49 +20,86 @@ end;
   <div class="faq-loading" style="display: none;">Загрузка...</div>
 </dd>
 
-Что изменено:
+Важно:
 
-#ANSWER!RAW# заменён на div.faq-loading, куда будет вставляться HTML-контент
+Убедись, что в свойствах шаблона отключено Escape Special Characters.
 
-Уникальный id="faq-answer-#ID#" для каждой записи
+Не вставляй #ANSWER# — он заменяется через AJAX.
 
 
 
 ---
 
-Шаг 4. JavaScript для загрузки CLOB-контента
+2. AJAX Callback (на странице 2020)
 
-Где: Page → Execute when Page Loads
+Name: GET_FAQ_HTML
+Тип: PL/SQL Function Returning CLOB
 
-document.querySelectorAll(".x-faq-btn").forEach(function(btn) {
+declare
+    l_clob clob;
+begin
+    select des_test
+      into l_clob
+      from bi_portal_faq
+     where id = :P2020_FAQ_ID;
+
+    return l_clob;
+end;
+
+
+---
+
+3. Page Item
+
+Создай скрытый элемент:
+
+Имя: P2020_FAQ_ID
+
+Тип: Hidden
+
+Value Protected: No
+
+
+
+---
+
+4. JavaScript (выполняется при загрузке страницы)
+
+Где: Page Designer → Execute when Page Loads
+
+document.querySelectorAll(".x-faq-btn").forEach(function (btn) {
   btn.addEventListener("click", function () {
     const faqId = btn.getAttribute("data-faq-id");
     const answerBlock = document.getElementById("faq-answer-" + faqId);
+    const loader = answerBlock.querySelector(".faq-loading");
 
     const isOpen = btn.getAttribute("aria-expanded") === "true";
+
+    // Меняем состояние кнопки
     btn.setAttribute("aria-expanded", !isOpen);
     btn.querySelector(".fa-plus").style.display = isOpen ? "" : "none";
     btn.querySelector(".fa-minus").style.display = isOpen ? "none" : "";
 
+    // Открываем/закрываем блок
     answerBlock.style.display = isOpen ? "none" : "block";
 
-    // Если уже загружено — не загружать снова
+    // Если еще не загружено — делаем AJAX-запрос
     if (!answerBlock.dataset.loaded && !isOpen) {
-      apex.item("PXX_FAQ_ID").setValue(faqId);
-
-      const loader = answerBlock.querySelector(".faq-loading");
+      apex.item("P2020_FAQ_ID").setValue(faqId);
       loader.style.display = "block";
 
       apex.server.process("GET_FAQ_HTML", {
-        pageItems: "#PXX_FAQ_ID#"
+        pageItems: "P2020_FAQ_ID"
       }, {
-        success: function(pData) {
+        dataType: "text",
+        success: function (pData) {
           loader.style.display = "none";
           answerBlock.innerHTML = pData;
           answerBlock.dataset.loaded = "true";
         },
-        error: function(jqXHR, textStatus, errorThrown) {
+        error: function (jqXHR, textStatus, errorThrown) {
           loader.innerHTML = "Ошибка загрузки";
+          console.error("AJAX Error:", textStatus, errorThrown);
         }
       });
     }
@@ -117,32 +109,41 @@ document.querySelectorAll(".x-faq-btn").forEach(function(btn) {
 
 ---
 
-Шаг 5. Проверка
+5. SQL-источник компонента (Report или Template Component)
 
-Убедись, что у Template Component отключено Escape Special Characters (чтобы HTML отображался как код, а не как текст).
+select
+  id,
+  question
+from
+  bi_portal_faq
 
-Проверь, что колонка ID выводится в SQL-источнике данных компонента.
+Важно: колонка des_test здесь не нужна, так как она будет подгружаться через AJAX.
 
-Если используешь Report или Template Component, убедись, что #ID# корректно подставляется.
+
+---
+
+Проверка
+
+Нажимаешь на вопрос → блок раскрывается
+
+AJAX-запрос уходит → возвращает HTML
+
+HTML вставляется в dd как полноценная разметка
+
+Повторный клик не вызывает повторной загрузки
 
 
 
 ---
 
-Результат
+Дополнительно (по желанию)
 
-При клике на вопрос:
+Если ты хочешь, чтобы вопросы загружались каждый раз заново, просто убери строку:
 
-HTML из CLOB (des_test) подгружается по AJAX.
-
-Вставляется как innerHTML в блок <dd>.
-
-Отображается корректно как HTML (с форматированием, стилями и т.д.).
-
+answerBlock.dataset.loaded = "true";
 
 
 ---
 
-Если хочешь — могу помочь экспортировать пример страницы с этим решением.
-Продолжим?
+Если нужно — могу экспортировать это в .sql как страницу или компонент. Готов?
 

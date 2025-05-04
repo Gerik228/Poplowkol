@@ -1,10 +1,107 @@
-declare
-    l_clob  clob;
-begin
-    select des_test
-      into l_clob
-      from bi_portal_faq
-     where id = :P2020_FAQ_ID;
+Спасибо за скрин — и он очень показателен. Ошибки 404 в консоли не связаны напрямую с нашим AJAX-вызовом для FAQ, но они указывают на ошибочную подгрузку системных ресурсов.
 
-    sys.htp.prn(l_clob);          -- << выводим CLOB в ответ
-end;
+
+---
+
+Что показывает консоль
+
+Ключевая строка:
+
+GET https://vld-srvapex01.pskb.ad/ords/apex.server.process(...) 404 (Not Found)
+
+И ещё:
+
+defineTemplates invalid escape value removed: APEX$TMPL_RPT_...
+
+
+---
+
+Возможные причины:
+
+1. Процесс всё ещё имеет тип Execute Code, но использует return
+
+Проверь ещё раз:
+
+Если ты оставил тип Execute Code, то return l_clob; нельзя — нужно sys.htp.prn(l_clob);
+
+
+ИЛИ
+
+Если ты используешь return, то обязательно должен быть тип PL/SQL Function Returning CLOB
+(ищется через Show Legacy…)
+
+
+
+---
+
+2. Сбой на уровне шаблона компонента
+
+Ошибка defineTemplates invalid escape value removed: APEX$TMPL_RPT... указывает, что:
+
+В Template Component используется неправильный escape type для какого-то плейсхолдера (например, #ANSWER#), которого теперь нет.
+
+Возможно, ты удалил #ANSWER#, но не убрал привязку к нему.
+
+
+Решение:
+
+Открой шаблон компонента (Partial Template)
+
+Убедись, что escape установлен в No Escaping (или RAW) только там, где это нужно
+
+Если поле #ANSWER# больше не используется — удали его из Template Options
+
+
+
+---
+
+3. Подмена пути к ресурсу ORDS
+
+404 по адресу apex.server.process(...) может возникнуть, если:
+
+JavaScript генерирует неправильный путь (например, с кавычками или спецсимволами)
+
+Имя процесса содержит невалидные символы (например, пробелы, кавычки или юникод)
+
+
+
+---
+
+Что делать прямо сейчас
+
+1. Убедись, что процесс работает
+
+Открой консоль и вручную выполни:
+
+apex.item("P2020_FAQ_ID").setValue(21); // замените на существующий ID
+apex.server.process("GET_FAQ_HTML", {
+  pageItems: "P2020_FAQ_ID"
+}, {
+  dataType: "text",
+  success: function(data) { console.log("OK:", data); },
+  error: function() { console.error("Ошибка AJAX"); }
+});
+
+Если всё работает — проблема точно в HTML-шаблоне или JavaScript.
+
+
+---
+
+2. Почини HTML-шаблон
+
+Открой шаблон компонента → вкладка Template Options / Substitution Strings:
+
+Удали #ANSWER#, если не используется
+
+Убедись, что Escape Special Characters отключен
+
+
+
+---
+
+3. Подскажи: нужен ли экспорт примерной страницы?
+
+Я могу выдать .sql экспорт готовой рабочей страницы с этим функционалом — с шаблоном, процессом и рабочим JS. Импортируешь в своё приложение — и сравнишь с тем, что у тебя.
+
+Сделать?
+

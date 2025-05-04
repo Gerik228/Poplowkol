@@ -1,123 +1,114 @@
-begin
-    htp.p('Hello! You requested image ID: ' || :id);
-end;
+Отлично, теперь всё стало яснее.
+Мы реализуем подгрузку HTML из поля des_test таблицы bi_portal_faq по клику в компоненте, чтобы он вставлялся как HTML-контент в блок внутри карточки, и всё это — на Oracle APEX 23.1.0.
 
+
+---
+
+Пошаговое решение (только для APEX 23.1.0)
+
+
+---
+
+Шаг 1. Создай AJAX Callback
+
+Где:
+Shared Components → Page Processing → AJAX Callback
+
+Имя: GET_FAQ_ANSWER
+
+Тип: PL/SQL Function Returning CLOB
+
+Код:
 
 declare
-    l_blob      blob;
-    l_mime      varchar2(255);
-    l_filename  varchar2(255);
+    l_clob clob;
 begin
-    select image_blob, mime_type, file_name
-    into l_blob, l_mime, l_filename
-    from product_images
-    where id = :id;
+    select des_test
+      into l_clob
+      from bi_portal_faq
+     where id = :PXX_FAQ_ID;
 
-    owa_util.mime_header(l_mime, false);
-    htp.p('Content-Disposition: inline; filename="' || l_filename || '"');
-    owa_util.http_header_close;
-    wpg_docload.download_file(l_blob);
+    return l_clob;
 end;
 
-
-
-Отличные новости — ORDS установлен и работает!
-Теперь мы можем на 100% точно создать рабочий REST endpoint вручную, чтобы отдавать BLOB через ссылку.
+Замените :PXX_FAQ_ID на ваш Page Item (если нет — создадим на следующем шаге).
 
 
 ---
 
-Что ты получишь:
+Шаг 2. Создай скрытый элемент страницы
 
-Ссылку типа:
-
-https://your-domain/ords/web_rnd/api/images/:id
-
-Которая будет отдавать содержимое IMAGE_BLOB из таблицы PRODUCT_IMAGES.
-
-
----
-
-Шаги: Создание собственного RESTful endpoint вручную
-
-1. Открываем APEX > SQL Workshop > RESTful Services
-
-Если нет вкладки "RESTful Services" — включи REST в схеме через админа.
+Тип: Hidden
+Имя: PXX_FAQ_ID (где XX — номер вашей страницы)
+Value Protected: No
+(Нужно для передачи ID вопроса при клике)
 
 
 ---
 
-2. Создай RESTful модуль
+Шаг 3. Настрой HTML-шаблон Template Component
 
-Module
+Внутри Template Component, например:
 
-Name: api
-
-Base Path: /api/
-
-Status: Published
-
-
-Template
-
-URI Pattern: images/:id
-
-Это путь, по которому будет вызываться наш endpoint
-
-
-Method
-
-GET
-
+<div class="faq-item" data-faq-id="#ID#">
+  <div class="faq-question">#QUESTION#</div>
+  <div class="faq-answer" id="faq-answer-#ID#"></div>
+</div>
 
 
 ---
 
-3. Код обработки запроса (GET /images/:id)
+Шаг 4. Подключи JavaScript на странице
 
-declare
-    l_mime  varchar2(255);
-    l_blob  blob;
-    l_name  varchar2(255);
-begin
-    select mime_type, image_blob, file_name
-    into l_mime, l_blob, l_name
-    from product_images
-    where id = :id;
+В "Function and Global Variable Declaration" добавь:
 
-    owa_util.mime_header(l_mime, false);
-    htp.p('Content-Disposition: inline; filename="' || l_name || '"');
-    owa_util.http_header_close;
-    wpg_docload.download_file(l_blob);
+function loadFaqAnswer(faqId) {
+    apex.item("PXX_FAQ_ID").setValue(faqId);
 
-    apex_application.stop_apex_engine;
-end;
-
-
----
-
-4. Теперь у тебя будет ссылка:
-
-https://your-domain/ords/web_rnd/api/images/123
-
-Где 123 — это ID изображения.
+    apex.server.process("GET_FAQ_ANSWER", {
+        pageItems: "#PXX_FAQ_ID#"
+    }, {
+        success: function(pData) {
+            const answerContainer = document.getElementById("faq-answer-" + faqId);
+            answerContainer.innerHTML = pData;
+        },
+        error: function(jqXHR, textStatus, errorThrown) {
+            console.error("Ошибка загрузки FAQ:", textStatus, errorThrown);
+        }
+    });
+}
 
 
 ---
 
-Итог:
+Шаг 5. Навешай обработчик на клик
 
-Не зависит от автоматических ORDS включений
+В "Execute when Page Loads":
 
-Работает стабильно и всегда отдаёт BLOB
+document.querySelectorAll(".faq-question").forEach(function(el) {
+    el.addEventListener("click", function() {
+        const faqItem = el.closest(".faq-item");
+        const faqId = faqItem.getAttribute("data-faq-id");
+        loadFaqAnswer(faqId);
+    });
+});
 
-Ты сам контролируешь URL-структуру
 
-Поддерживает MIME-типы, имена файлов, inline/attachment режимы
+---
+
+Пояснения с учётом APEX 23.1.0:
+
+В 23.1.0 apex.server.process работает стабильно с clob-ответами.
+
+Убедись, что компонент не экранирует HTML — в Template Component должна быть отключена опция Escape Special Characters для #ANSWER#, если она используется.
+
+des_test может содержать полноценный HTML, включая стили, и будет корректно вставлен в DOM.
 
 
 
 ---
 
-Хочешь, я подготовлю экспорт этого REST-модуля, чтобы ты мог просто импортировать в APEX?
+Хочешь — могу выдать готовый рабочий шаблон Template Component под APEX 23.1. с этим поведением.
+
+Хочешь пример с модальным окном или оставить inline-вставку в блок?
 

@@ -1,20 +1,34 @@
-Отлично, теперь всё стало яснее.
-Мы реализуем подгрузку HTML из поля des_test таблицы bi_portal_faq по клику в компоненте, чтобы он вставлялся как HTML-контент в блок внутри карточки, и всё это — на Oracle APEX 23.1.0.
+Конечно! Ниже — полная и актуальная инструкция, полностью адаптированная к твоей HTML-разметке из снимка и под Oracle APEX 23.1.0.
 
 
 ---
 
-Пошаговое решение (только для APEX 23.1.0)
+Цель
+
+Показывать HTML-контент из поля des_test (тип CLOB) таблицы bi_portal_faq по клику на кнопку в FAQ-шаблоне. Контент должен подгружаться динамически через AJAX и вставляться в соответствующий блок <dd class="x-faq-dd">.
 
 
 ---
 
-Шаг 1. Создай AJAX Callback
+Шаг 1. Добавь скрытый Page Item
 
-Где:
-Shared Components → Page Processing → AJAX Callback
+Имя: PXX_FAQ_ID (где XX — номер страницы)
 
-Имя: GET_FAQ_ANSWER
+Тип: Hidden
+
+Value Protected: No
+
+Используется для передачи ID в AJAX callback
+
+
+
+---
+
+Шаг 2. Создай AJAX Callback
+
+Где: Page Processing → AJAX Callback
+
+Имя: GET_FAQ_HTML
 
 Тип: PL/SQL Function Returning CLOB
 
@@ -31,84 +45,104 @@ begin
     return l_clob;
 end;
 
-Замените :PXX_FAQ_ID на ваш Page Item (если нет — создадим на следующем шаге).
+
+---
+
+Шаг 3. Измени HTML-шаблон Template Component
+
+Твоя текущая разметка + изменения:
+
+<dt class="x-faq-dt">
+  <button type="button" class="x-faq-btn" aria-expanded="false" data-faq-id="#ID#">
+    <span class="x-faq-title">#QUESTION#</span>
+    <span class="x-faq-icon-parent">
+      <span class="fa fa-plus" aria-hidden="true"></span>
+      <span class="fa fa-minus" aria-hidden="true" style="display: none;"></span>
+    </span>
+  </button>
+</dt>
+<dd class="x-faq-dd" id="faq-answer-#ID#" style="display: none;">
+  <div class="faq-loading" style="display: none;">Загрузка...</div>
+</dd>
+
+Что изменено:
+
+#ANSWER!RAW# заменён на div.faq-loading, куда будет вставляться HTML-контент
+
+Уникальный id="faq-answer-#ID#" для каждой записи
+
 
 
 ---
 
-Шаг 2. Создай скрытый элемент страницы
+Шаг 4. JavaScript для загрузки CLOB-контента
 
-Тип: Hidden
-Имя: PXX_FAQ_ID (где XX — номер вашей страницы)
-Value Protected: No
-(Нужно для передачи ID вопроса при клике)
+Где: Page → Execute when Page Loads
 
+document.querySelectorAll(".x-faq-btn").forEach(function(btn) {
+  btn.addEventListener("click", function () {
+    const faqId = btn.getAttribute("data-faq-id");
+    const answerBlock = document.getElementById("faq-answer-" + faqId);
 
----
+    const isOpen = btn.getAttribute("aria-expanded") === "true";
+    btn.setAttribute("aria-expanded", !isOpen);
+    btn.querySelector(".fa-plus").style.display = isOpen ? "" : "none";
+    btn.querySelector(".fa-minus").style.display = isOpen ? "none" : "";
 
-Шаг 3. Настрой HTML-шаблон Template Component
+    answerBlock.style.display = isOpen ? "none" : "block";
 
-Внутри Template Component, например:
+    // Если уже загружено — не загружать снова
+    if (!answerBlock.dataset.loaded && !isOpen) {
+      apex.item("PXX_FAQ_ID").setValue(faqId);
 
-<div class="faq-item" data-faq-id="#ID#">
-  <div class="faq-question">#QUESTION#</div>
-  <div class="faq-answer" id="faq-answer-#ID#"></div>
-</div>
+      const loader = answerBlock.querySelector(".faq-loading");
+      loader.style.display = "block";
 
-
----
-
-Шаг 4. Подключи JavaScript на странице
-
-В "Function and Global Variable Declaration" добавь:
-
-function loadFaqAnswer(faqId) {
-    apex.item("PXX_FAQ_ID").setValue(faqId);
-
-    apex.server.process("GET_FAQ_ANSWER", {
+      apex.server.process("GET_FAQ_HTML", {
         pageItems: "#PXX_FAQ_ID#"
-    }, {
+      }, {
         success: function(pData) {
-            const answerContainer = document.getElementById("faq-answer-" + faqId);
-            answerContainer.innerHTML = pData;
+          loader.style.display = "none";
+          answerBlock.innerHTML = pData;
+          answerBlock.dataset.loaded = "true";
         },
         error: function(jqXHR, textStatus, errorThrown) {
-            console.error("Ошибка загрузки FAQ:", textStatus, errorThrown);
+          loader.innerHTML = "Ошибка загрузки";
         }
-    });
-}
-
-
----
-
-Шаг 5. Навешай обработчик на клик
-
-В "Execute when Page Loads":
-
-document.querySelectorAll(".faq-question").forEach(function(el) {
-    el.addEventListener("click", function() {
-        const faqItem = el.closest(".faq-item");
-        const faqId = faqItem.getAttribute("data-faq-id");
-        loadFaqAnswer(faqId);
-    });
+      });
+    }
+  });
 });
 
 
 ---
 
-Пояснения с учётом APEX 23.1.0:
+Шаг 5. Проверка
 
-В 23.1.0 apex.server.process работает стабильно с clob-ответами.
+Убедись, что у Template Component отключено Escape Special Characters (чтобы HTML отображался как код, а не как текст).
 
-Убедись, что компонент не экранирует HTML — в Template Component должна быть отключена опция Escape Special Characters для #ANSWER#, если она используется.
+Проверь, что колонка ID выводится в SQL-источнике данных компонента.
 
-des_test может содержать полноценный HTML, включая стили, и будет корректно вставлен в DOM.
+Если используешь Report или Template Component, убедись, что #ID# корректно подставляется.
 
 
 
 ---
 
-Хочешь — могу выдать готовый рабочий шаблон Template Component под APEX 23.1. с этим поведением.
+Результат
 
-Хочешь пример с модальным окном или оставить inline-вставку в блок?
+При клике на вопрос:
+
+HTML из CLOB (des_test) подгружается по AJAX.
+
+Вставляется как innerHTML в блок <dd>.
+
+Отображается корректно как HTML (с форматированием, стилями и т.д.).
+
+
+
+---
+
+Если хочешь — могу помочь экспортировать пример страницы с этим решением.
+Продолжим?
 

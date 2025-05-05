@@ -1,47 +1,28 @@
-Отлично! Сейчас ты получишь готовый, финальный код (вариант 2), в котором Page Item вообще не используется — мы передаём faqId напрямую через x01. Это более стабильный и быстрый подход.
+Отлично, ты дошёл до последнего рубежа — и это уже не AJAX, не шаблон, не JS.
+
+Ошибка:
+
+> ORA-06502: PL/SQL: ошибка числа или значения
+
+
+
+означает, что ты пытаешься присвоить строку в переменную неправильного типа. А значит:
 
 
 ---
 
-1. JavaScript (полностью готовый блок)
+Причина: apex_application.g_x01 — это VARCHAR2, а твой id — скорее всего NUMBER
 
-Вставь в "Execute when Page Loads":
+А ты пытаешься сделать:
 
-const $faq = apex.jQuery;
-
-$faq('div.t-Body').on('click', '.x-faq-btn', function () {
-  const faqId = $faq(this).data('faq-id');
-  const $answerBlock = $faq('#faq-answer-' + faqId);
-
-  // Не загружаем повторно
-  if ($answerBlock.data('loaded')) return;
-
-  const $loader = $answerBlock.find('.faq-loading');
-  $loader.show();
-
-  // Запрос на сервер с передачей ID через x01
-  apex.server.process("GET_FAQ_HTML", {
-    x01: faqId
-  }, {
-    dataType: 'text',
-    success: function (pData) {
-      $loader.hide();
-      $answerBlock.html(pData);
-      $answerBlock.data('loaded', true);
-    },
-    error: function () {
-      $loader.html('Ошибка загрузки');
-    }
-  });
-});
+where id = apex_application.g_x01; -- конфликт типов!
 
 
 ---
 
-2. PL/SQL процесс GET_FAQ_HTML (Ajax Callback)
+Решение: привести тип явно к NUMBER
 
-Тип: Execute Code
-(не "Function returning CLOB", обычный Execute Code, как сейчас)
+Обнови свой PL/SQL-код на:
 
 declare
   l_clob clob;
@@ -49,47 +30,38 @@ begin
   select des_test
     into l_clob
     from bi_portal_faq
-   where id = apex_application.g_x01;
+   where id = to_number(apex_application.g_x01); -- << здесь ключ
 
   sys.htp.prn(l_clob);
 
 exception
   when no_data_found then
     sys.htp.prn('Контент не найден');
+  when others then
+    sys.htp.prn('sqlerrm: ' || sqlerrm);
 end;
 
 
 ---
 
-3. Шаблон компонента (без изменений)
+Что мы сделали:
 
-Оставь data-faq-id="#ID#" — как у тебя:
+g_x01 всегда строка (varchar2)
 
-<button type="button" class="x-faq-btn" data-faq-id="#ID#" ...>
+id в таблице — number
 
-
----
-
-4. Убедись, что Page Item P2020_FAQ_ID больше не используется
-
-Можно его удалить или просто игнорировать
-
-Главное — не указывать его в pageItems: в JS
+Поэтому надо использовать to_number()
 
 
 
 ---
 
-Итог
+Бонус: отладка через sqlerrm
 
-С этим кодом:
-
-faqId передаётся прямо в процесс
-
-Не нужно ждать применения setValue
-
-Ошибки ORA-01403 больше не будет, если ID есть в БД
+Мы добавили when others then с sqlerrm, чтобы видеть любые другие ошибки — это поможет в будущем.
 
 
-Готов выдать .sql с примером?
+---
+
+Готов выдать полную рабочую сборку на экспорт в .sql, если хочешь. Проверяй, и дай знать, заработало ли!
 

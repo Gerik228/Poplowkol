@@ -1,120 +1,29 @@
-Отлично! Ниже — полная, пошаговая инструкция для варианта 1 (через apex_exec + apex_json.write(clob)), чтобы ты динамически загружал и отображал CLOB HTML без ограничений по размеру в Oracle APEX 23.1.
-
-
----
-
-Цель:
-
-Загружать большой HTML из bi_portal_faq.des_test по клику
-
-Выводить полный CLOB без обрезки
-
-Использовать JSON и x01
-
-Работать без ограничения 32K
-
-
-
----
-
-1. JavaScript: динамическая загрузка по нажатию
-
-Вставь в “Execute when Page Loads”:
-
-const $faq = apex.jQuery;
-
-$faq('div.t-Body').on('click', '.x-faq-btn', function () {
-  const faqId = $faq(this).data('faq-id');
-  const $answerBlock = $faq('#faq-answer-' + faqId);
-
-  // Не загружаем повторно
-  if ($answerBlock.data('loaded')) return;
-
-  const $loader = $answerBlock.find('.faq-loading');
-  $loader.show();
-
-  apex.server.process("GET_FAQ_HTML", {
-    x01: faqId
-  }, {
-    dataType: "json",
-    success: function (pData) {
-      $loader.hide();
-      if (pData.html) {
-        $answerBlock.html(pData.html);
-        $answerBlock.data('loaded', true);
-      } else {
-        $answerBlock.html("Контент не найден");
-      }
-    },
-    error: function () {
-      $answerBlock.html("Ошибка загрузки");
-    }
-  });
-});
-
-
----
-
-2. HTML-шаблон Template Component
-
-Твоя текущая разметка — подходит. Убедись, что:
-
-<dt class="x-faq-dt">
-  <button type="button" class="x-faq-btn" data-faq-id="#ID#" aria-expanded="false">
-    <span class="x-faq-title">#QUESTION#</span>
-    <span class="x-faq-icon-parent">
-      <span class="fa fa-plus" aria-hidden="true"></span>
-      <span class="fa fa-minus" aria-hidden="true" style="display: none;"></span>
-    </span>
-  </button>
-</dt>
-<dd class="x-faq-dd" id="faq-answer-#ID#" style="display: none;">
-  <div class="faq-loading" style="display: none;">Загрузка...</div>
-</dd>
-
-Убедись:
-
-data-faq-id="#ID#" есть в кнопке
-
-Внутри dd есть div.faq-loading
-
-
-
----
-
-3. Создай AJAX Callback процесс
-
-Где:
-
-Page Designer → Page 2020 → Processing → Create → Ajax Callback
-
-Имя: GET_FAQ_HTML
-
-Тип: Execute Code
-
-Код:
-
 declare
-  l_clob    clob;
-  l_ctx     apex_exec.t_context;
+  l_clob     clob;
+  l_ctx      apex_exec.t_context;
+  l_bind_val apex_exec.t_values;
 begin
-  -- Открываем запрос
+  -- Подготавливаем bind-параметры
+  apex_exec.add_value(p_values => l_bind_val, p_value => apex_application.g_x01);
+
+  -- Открываем запрос с параметрами
   l_ctx := apex_exec.open_query_context(
-    p_location   => apex_exec.c_location_local_db,
-    p_sql_query  => q'~
+    p_location     => apex_exec.c_location_local_db,
+    p_sql_query    => q'~
       select des_test
         from bi_portal_faq
        where id = to_number(:x01)
     ~',
-    p_bind_names => apex_util.string_to_table('X01')
+    p_max_rows     => 1,
+    p_bind_names   => apex_util.string_to_table('X01'),
+    p_bind_values  => l_bind_val
   );
 
-  -- Если строка найдена — получаем CLOB
   if apex_exec.next_row(l_ctx) then
     l_clob := apex_exec.get_clob(l_ctx, 1);
 
     apex_json.open_object;
-    apex_json.write('html', l_clob); -- ключ 'html' придёт в JS
+    apex_json.write('html', l_clob); -- вернётся в JS
     apex_json.close_object;
   else
     apex_json.open_object;
@@ -131,40 +40,3 @@ exception
     apex_json.write('error', sqlerrm);
     apex_json.close_object;
 end;
-
-
----
-
-4. Убедись, что:
-
-В SQL Query Template Component возвращается ID и QUESTION:
-
-
-select id, question from bi_portal_faq
-
-У атрибута ID включено использование в шаблоне #ID#
-
-Escape Special Characters отключен для HTML
-
-
-
----
-
-5. Результат
-
-Пользователь нажимает на вопрос
-
-AJAX-запрос уходит с x01 = ID
-
-Процесс возвращает полный des_test как JSON
-
-JS вставляет его как HTML в нужный блок
-
-
-
----
-
-Хочешь готовый экспорт страницы с этим кодом?
-
-Я могу собрать .sql файл и ты просто импортируешь его в своё приложение для сравнения. Готов выдать?
-

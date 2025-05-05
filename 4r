@@ -1,14 +1,3 @@
-Спасибо, что уточнил — значит, ошибка ORA-06502 осталась даже после to_number(...).
-
-
----
-
-Проверка: в чём может быть дело
-
-1. Ты точно применил to_number(apex_application.g_x01)?
-
-Вот правильный пример кода (ещё раз, полностью):
-
 declare
   l_clob clob;
 begin
@@ -17,87 +6,11 @@ begin
     from bi_portal_faq
    where id = to_number(apex_application.g_x01);
 
-  sys.htp.prn(l_clob);
+  apex_util.print_clob(l_clob);
 
 exception
   when no_data_found then
     sys.htp.prn('Контент не найден');
   when others then
-    sys.htp.prn('sqlerrm: ' || sqlerrm);
+    sys.htp.prn('Ошибка: ' || sqlerrm);
 end;
-
-Если ты уже это сделал — идём дальше.
-
-
----
-
-2. Ошибка может быть не в id, а в des_test
-
-Если поле des_test содержит символы, несовместимые с выводом, либо в нем содержатся невалидные UTF-символы — это тоже может вызвать ORA-06502.
-
-Проверь вручную содержимое по ID:
-
-select id, dbms_lob.getlength(des_test), des_test
-from bi_portal_faq
-where id = 21; -- или тот ID, что ты используешь
-
-Если des_test очень большой или содержит нечитаемые символы — это может быть источником ошибки.
-
-Особенно, если ты раньше вручную вставлял туда HTML или копировал из Word.
-
-
-
----
-
-3. Убедись, что переменная l_clob — это действительно CLOB, а не VARCHAR2
-
-Если по ошибке ты определил:
-
-l_clob varchar2(4000);  -- это вызовет ошибку, если данные > 4000 байт!
-
-То обязательно поправь на:
-
-l_clob clob;
-
-
----
-
-Если хочешь проверить прямо сейчас
-
-Добавь отладочный вывод в when others:
-
-exception
-  when others then
-    sys.htp.prn('sqlerrm: ' || sqlerrm);
-
-Ты уже это сделал, и на скрине виден sqlerrm: ORA-06502, но возможно покажет ещё точнее, в какой строке проблема.
-
-
----
-
-Финальный вариант для отладки:
-
-declare
-  l_clob clob;
-begin
-  sys.htp.prn('g_x01=' || apex_application.g_x01);
-
-  select des_test
-    into l_clob
-    from bi_portal_faq
-   where id = to_number(apex_application.g_x01);
-
-  sys.htp.prn(l_clob);
-
-exception
-  when others then
-    sys.htp.prn('sqlerrm: ' || sqlerrm);
-end;
-
-Ты увидишь сразу, какой g_x01 пришёл, и где упало.
-
-
----
-
-Хочешь — можешь прислать значение поля des_test, которое вызывает ошибку, и я проверю, что в нём может быть не так.
-

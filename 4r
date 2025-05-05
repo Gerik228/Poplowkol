@@ -1,12 +1,13 @@
 declare
-  l_clob     clob;
-  l_ctx      apex_exec.t_context;
-  l_bind_val apex_exec.t_values;
+  l_clob      clob;
+  l_ctx       apex_exec.t_context;
+  l_bind_vals apex_exec.t_values;
 begin
-  -- Подготавливаем bind-параметры
-  apex_exec.add_value(p_values => l_bind_val, p_value => apex_application.g_x01);
+  -- Заполняем массив значений вручную
+  l_bind_vals(1).name  := 'X01';
+  l_bind_vals(1).value := apex_exec.t_value(apex_application.g_x01);
 
-  -- Открываем запрос с параметрами
+  -- Открываем запрос
   l_ctx := apex_exec.open_query_context(
     p_location     => apex_exec.c_location_local_db,
     p_sql_query    => q'~
@@ -16,14 +17,14 @@ begin
     ~',
     p_max_rows     => 1,
     p_bind_names   => apex_util.string_to_table('X01'),
-    p_bind_values  => l_bind_val
+    p_bind_values  => l_bind_vals
   );
 
   if apex_exec.next_row(l_ctx) then
     l_clob := apex_exec.get_clob(l_ctx, 1);
 
     apex_json.open_object;
-    apex_json.write('html', l_clob); -- вернётся в JS
+    apex_json.write('html', l_clob); -- отправляем clob в JSON
     apex_json.close_object;
   else
     apex_json.open_object;

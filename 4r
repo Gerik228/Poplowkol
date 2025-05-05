@@ -1,43 +1,97 @@
+Вот это уже серьёзный и масштабируемый подход. Да, если ты хочешь:
+
+избавиться от всех ограничений по размеру
+
+отдавать CLOB как есть
+
+разгрузить APEX процессы
+
+использовать стандартные механизмы fetch() или Ajax
+
+
+— тогда RESTful Web Service через ORDS — это лучшее решение.
+
+
+---
+
+Почему REST — лучший путь для CLOB?
+
+Преимущество	Комментарий
+
+Нет лимита на 32K	ORDS может отдавать LOB напрямую
+Не нужен htp.p	Используется dbms_lob.substr, либо сразу CLOB
+Можно кешировать	Через ORDS и APEX REST Cache
+Можно использовать вне APEX	API готов для интеграций
+
+
+
+---
+
+Как сделать (пошагово):
+
+1. Создай RESTful Service Module
+
+APEX → SQL Workshop → RESTful Services
+
+Создай модуль, например: /faq
+
+Путь: /faq
+
+
+
+---
+
+2. Добавь Template
+
+URI Template: /answer/:id
+
+Тип: GET
+
+
+
+---
+
+3. В PL/SQL Handler вставь:
+
 declare
-  l_clob      clob;
-  l_ctx       apex_exec.t_context;
-  l_bind_vals apex_exec.t_values;
+  l_clob clob;
 begin
-  -- Заполняем массив значений вручную
-  l_bind_vals(1).name  := 'X01';
-  l_bind_vals(1).value := apex_exec.t_value(apex_application.g_x01);
+  select des_test
+    into l_clob
+    from bi_portal_faq
+   where id = to_number(:id);
 
-  -- Открываем запрос
-  l_ctx := apex_exec.open_query_context(
-    p_location     => apex_exec.c_location_local_db,
-    p_sql_query    => q'~
-      select des_test
-        from bi_portal_faq
-       where id = to_number(:x01)
-    ~',
-    p_max_rows     => 1,
-    p_bind_names   => apex_util.string_to_table('X01'),
-    p_bind_values  => l_bind_vals
-  );
+  -- Устанавливаем заголовки
+  owa_util.mime_header('text/html', FALSE);
+  htp.p('Access-Control-Allow-Origin: *');
+  owa_util.http_header_close;
 
-  if apex_exec.next_row(l_ctx) then
-    l_clob := apex_exec.get_clob(l_ctx, 1);
-
-    apex_json.open_object;
-    apex_json.write('html', l_clob); -- отправляем clob в JSON
-    apex_json.close_object;
-  else
-    apex_json.open_object;
-    apex_json.write('error', 'Контент не найден');
-    apex_json.close_object;
-  end if;
-
-  apex_exec.close(l_ctx);
-
-exception
-  when others then
-    apex_exec.close(l_ctx);
-    apex_json.open_object;
-    apex_json.write('error', sqlerrm);
-    apex_json.close_object;
+  -- Отдаём CLOB по кускам
+  for i in 0 .. trunc((dbms_lob.getlength(l_clob) - 1) / 32767)
+  loop
+    htp.p(dbms_lob.substr(l_clob, 32767, i * 32767 + 1));
+  end loop;
 end;
+
+
+---
+
+4. Проверь в браузере:
+
+https://<your-server>/ords/<schema>/faq/answer/21
+
+Он отдаст полный HTML CLOB без ограничений, можно вставить через JavaScript:
+
+fetch('/ords/web_rnd/faq/answer/21')
+  .then(resp => resp.text())
+  .then(html => {
+    document.getElementById('faq-answer-21').innerHTML = html;
+  });
+
+
+---
+
+Итог:
+
+Да, это более продвинуто, но и гибко, масштабируемо, без ограничений, полностью под твою архитектуру. Если хочешь — подготовлю экспорт ORDS-модуля и JS-пример под твой стиль. Готов продолжать?
+

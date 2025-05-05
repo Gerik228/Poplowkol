@@ -1,65 +1,27 @@
-Отлично, если RESTful сервис уже работает и отдаёт HTML по GET, то теперь сделаем отображение данных на странице FAQ.
-
-
----
-
-Цель:
-
-При клике по вопросу подгружается HTML из ORDS REST endpoint и вставляется в нужный блок.
-
-
----
-
-1. Пример конечной точки (проверь у себя)
-
-https://<server>/ords/<schema>/faq/answer/21
-
-
----
-
-2. Обновим HTML-шаблон компонента FAQ
-
-Убедись, что в Template Component'е (вкладка Templates) вот такая разметка:
-
-<dt class="x-faq-dt">
-  <button type="button" class="x-faq-btn" aria-expanded="false" data-faq-id="#ID#">
-    <span class="x-faq-title">#QUESTION#</span>
-    <span class="x-faq-icon-parent">
-      <span class="fa fa-plus" aria-hidden="true"></span>
-      <span class="fa fa-minus" aria-hidden="true" style="display: none;"></span>
-    </span>
-  </button>
-</dt>
-<dd class="x-faq-dd" id="faq-answer-#ID#" style="display: none;">
-  <div class="faq-loading" style="display: none;">Загрузка...</div>
-</dd>
-
-
----
-
-3. JavaScript-код для подгрузки (Execute when Page Loads)
-
-Вставь в свойства страницы → Execute when Page Loads:
-
 const $faq = apex.jQuery;
 
 $faq('div.t-Body').on('click', '.x-faq-btn', function () {
-  const faqId = $faq(this).data('faq-id');
+  const $btn = $faq(this);
+  const faqId = $btn.data('faq-id');
   const $answerBlock = $faq('#faq-answer-' + faqId);
   const $loader = $answerBlock.find('.faq-loading');
 
-  // Скрываем/показываем блок
-  const isOpen = $faq(this).attr('aria-expanded') === 'true';
-  $faq(this).attr('aria-expanded', !isOpen);
-  $faq(this).find('.fa-plus').toggle(!isOpen);
-  $faq(this).find('.fa-minus').toggle(isOpen);
+  const isOpen = $btn.attr('aria-expanded') === 'true';
+
+  // Обновляем визуализацию
+  $btn.attr('aria-expanded', !isOpen);
+  $btn.find('.fa-plus').toggle(isOpen);
+  $btn.find('.fa-minus').toggle(!isOpen);
   $answerBlock.slideToggle();
+  apex.event.trigger(document, 'apexwindowresized');
 
-  // Если уже загружено — не грузим снова
-  if ($answerBlock.data('loaded')) return;
+  // Если уже загружено — ничего не делаем
+  if ($answerBlock.data('loaded') || isOpen) return;
 
+  // Показываем прелоадер
   $loader.show();
 
+  // Загружаем HTML через REST
   fetch(`/ords/web_rnd/faq/answer/${faqId}`)
     .then(resp => resp.text())
     .then(html => {
@@ -68,38 +30,6 @@ $faq('div.t-Body').on('click', '.x-faq-btn', function () {
       $answerBlock.data('loaded', true);
     })
     .catch(() => {
-      $loader.html("Ошибка загрузки");
+      $loader.html('Ошибка загрузки');
     });
 });
-
-
----
-
-4. Убедись что:
-
-ID вставляется как #ID#
-
-В faqId приходит значение типа number
-
-ORDS доступен из браузера (нет CORS/403)
-
-
-
----
-
-Готово!
-
-Теперь при первом клике:
-
-происходит fetch() к REST endpoint’у
-
-HTML возвращается и вставляется как есть
-
-при следующем клике просто скрытие/показ без запроса
-
-
-
----
-
-Хочешь я тебе подготовлю .js + .sql экспорт этой страницы для полной уверенности?
-

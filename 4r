@@ -1,16 +1,28 @@
 declare
-  l_clob clob;
+  l_clob      clob;
+  l_pos       integer := 1;
+  l_chunk     varchar2(32000);
+  l_chunk_len constant integer := 30000; -- безопасный кусок
 begin
+  -- лог (для отладки)
+  sys.htp.prn('g_x01=' || apex_application.g_x01 || '<br>');
+
+  -- читаем CLOB
   select des_test
     into l_clob
     from bi_portal_faq
    where id = to_number(apex_application.g_x01);
 
-  apex_util.print_clob(l_clob);
+  -- выводим кусками
+  while l_pos <= dbms_lob.getlength(l_clob) loop
+    l_chunk := dbms_lob.substr(l_clob, l_chunk_len, l_pos);
+    sys.htp.prn(l_chunk);
+    l_pos := l_pos + l_chunk_len;
+  end loop;
 
 exception
   when no_data_found then
     sys.htp.prn('Контент не найден');
   when others then
-    sys.htp.prn('Ошибка: ' || sqlerrm);
+    sys.htp.prn('g_x01=' || apex_application.g_x01 || '<br>sqlerrm: ' || sqlerrm);
 end;

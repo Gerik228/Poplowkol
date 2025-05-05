@@ -1,107 +1,95 @@
-Спасибо за скрин — и он очень показателен. Ошибки 404 в консоли не связаны напрямую с нашим AJAX-вызовом для FAQ, но они указывают на ошибочную подгрузку системных ресурсов.
+Отлично! Сейчас ты получишь готовый, финальный код (вариант 2), в котором Page Item вообще не используется — мы передаём faqId напрямую через x01. Это более стабильный и быстрый подход.
 
 
 ---
 
-Что показывает консоль
+1. JavaScript (полностью готовый блок)
 
-Ключевая строка:
+Вставь в "Execute when Page Loads":
 
-GET https://vld-srvapex01.pskb.ad/ords/apex.server.process(...) 404 (Not Found)
+const $faq = apex.jQuery;
 
-И ещё:
+$faq('div.t-Body').on('click', '.x-faq-btn', function () {
+  const faqId = $faq(this).data('faq-id');
+  const $answerBlock = $faq('#faq-answer-' + faqId);
 
-defineTemplates invalid escape value removed: APEX$TMPL_RPT_...
+  // Не загружаем повторно
+  if ($answerBlock.data('loaded')) return;
 
+  const $loader = $answerBlock.find('.faq-loading');
+  $loader.show();
 
----
-
-Возможные причины:
-
-1. Процесс всё ещё имеет тип Execute Code, но использует return
-
-Проверь ещё раз:
-
-Если ты оставил тип Execute Code, то return l_clob; нельзя — нужно sys.htp.prn(l_clob);
-
-
-ИЛИ
-
-Если ты используешь return, то обязательно должен быть тип PL/SQL Function Returning CLOB
-(ищется через Show Legacy…)
-
-
-
----
-
-2. Сбой на уровне шаблона компонента
-
-Ошибка defineTemplates invalid escape value removed: APEX$TMPL_RPT... указывает, что:
-
-В Template Component используется неправильный escape type для какого-то плейсхолдера (например, #ANSWER#), которого теперь нет.
-
-Возможно, ты удалил #ANSWER#, но не убрал привязку к нему.
-
-
-Решение:
-
-Открой шаблон компонента (Partial Template)
-
-Убедись, что escape установлен в No Escaping (или RAW) только там, где это нужно
-
-Если поле #ANSWER# больше не используется — удали его из Template Options
-
-
-
----
-
-3. Подмена пути к ресурсу ORDS
-
-404 по адресу apex.server.process(...) может возникнуть, если:
-
-JavaScript генерирует неправильный путь (например, с кавычками или спецсимволами)
-
-Имя процесса содержит невалидные символы (например, пробелы, кавычки или юникод)
-
-
-
----
-
-Что делать прямо сейчас
-
-1. Убедись, что процесс работает
-
-Открой консоль и вручную выполни:
-
-apex.item("P2020_FAQ_ID").setValue(21); // замените на существующий ID
-apex.server.process("GET_FAQ_HTML", {
-  pageItems: "P2020_FAQ_ID"
-}, {
-  dataType: "text",
-  success: function(data) { console.log("OK:", data); },
-  error: function() { console.error("Ошибка AJAX"); }
+  // Запрос на сервер с передачей ID через x01
+  apex.server.process("GET_FAQ_HTML", {
+    x01: faqId
+  }, {
+    dataType: 'text',
+    success: function (pData) {
+      $loader.hide();
+      $answerBlock.html(pData);
+      $answerBlock.data('loaded', true);
+    },
+    error: function () {
+      $loader.html('Ошибка загрузки');
+    }
+  });
 });
 
-Если всё работает — проблема точно в HTML-шаблоне или JavaScript.
+
+---
+
+2. PL/SQL процесс GET_FAQ_HTML (Ajax Callback)
+
+Тип: Execute Code
+(не "Function returning CLOB", обычный Execute Code, как сейчас)
+
+declare
+  l_clob clob;
+begin
+  select des_test
+    into l_clob
+    from bi_portal_faq
+   where id = apex_application.g_x01;
+
+  sys.htp.prn(l_clob);
+
+exception
+  when no_data_found then
+    sys.htp.prn('Контент не найден');
+end;
 
 
 ---
 
-2. Почини HTML-шаблон
+3. Шаблон компонента (без изменений)
 
-Открой шаблон компонента → вкладка Template Options / Substitution Strings:
+Оставь data-faq-id="#ID#" — как у тебя:
 
-Удали #ANSWER#, если не используется
+<button type="button" class="x-faq-btn" data-faq-id="#ID#" ...>
 
-Убедись, что Escape Special Characters отключен
+
+---
+
+4. Убедись, что Page Item P2020_FAQ_ID больше не используется
+
+Можно его удалить или просто игнорировать
+
+Главное — не указывать его в pageItems: в JS
 
 
 
 ---
 
-3. Подскажи: нужен ли экспорт примерной страницы?
+Итог
 
-Я могу выдать .sql экспорт готовой рабочей страницы с этим функционалом — с шаблоном, процессом и рабочим JS. Импортируешь в своё приложение — и сравнишь с тем, что у тебя.
+С этим кодом:
 
-Сделать?
+faqId передаётся прямо в процесс
+
+Не нужно ждать применения setValue
+
+Ошибки ORA-01403 больше не будет, если ID есть в БД
+
+
+Готов выдать .sql с примером?
 

@@ -1,66 +1,25 @@
-Отлично! Ниже — абсолютно корректный PL/SQL-код создания триггера для Oracle APEX 23.1 (и не только), с учётом всех нюансов, включая работу в SQL Workshop, где :NEW может вызывать диалог "Bind Variable".
+package com.javarush.task.pro.task10.task1003;
 
+/* 
+Построим новый бизнес-комплекс JavaRush Business Center
+*/
 
----
+public class Skyscraper {
+    private int floorsCount;
+    private String developer;
 
-Корректный рабочий код триггера (без диалогов, без ошибок):
+    public Skyscraper() {
+        this.floorsCount = 5;
+        this.developer = "JavaRushDevelopment";
+    }
 
-create or replace trigger trg_set_image_url
-before insert or update on product_images
-for each row
-begin
-  :new.image_url := 'https://your-domain/ords/WEB_RND/product_images/' || :new.id || '/image_blob';
-end;
-/
+    public Skyscraper(int floorsCount, String developer) {
+        this.floorsCount = floorsCount;
+        this.developer = developer;
+    }
 
-Что обязательно:
-
-Запусти в SQL Commands, а не в SQL Scripts, чтобы избежать попытки ввода bind-переменных.
-
-Если всплывёт окно "Bind Variable", нажми "Cancel" — это норма для APEX SQL Workshop.
-
-Заменить:
-
-your-domain → на домен, где у тебя развернут ORDS
-
-WEB_RND → на имя твоей схемы в верхнем регистре (можно проверить select user from dual;)
-
-
-
-
----
-
-Пример с подстановкой:
-
-Допустим:
-
-Домен: https://apex.example.com
-
-Схема: WEB_RND
-
-
-Тогда:
-
-create or replace trigger trg_set_image_url
-before insert or update on product_images
-for each row
-begin
-  :new.image_url := 'https://apex.example.com/ords/WEB_RND/product_images/' || :new.id || '/image_blob';
-end;
-/
-
-
----
-
-Важно:
-
-Этот триггер будет автоматически сохранять правильный REST-ссылку в поле image_url.
-
-Работает 100% стабильно в APEX 23.1, если таблица REST-enabled (что ты уже настраиваешь).
-
-
-
----
-
-Если хочешь, я помогу протестировать это на твоём примере или сделать проверку ссылок.
-
+    public static void main(String[] args) {
+        Skyscraper skyscraper = new Skyscraper();
+        Skyscraper skyscraperUnknown = new Skyscraper(50, "Неизвестно");
+    }
+}

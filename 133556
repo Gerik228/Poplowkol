@@ -1,102 +1,115 @@
-BEGIN
-  ----------------------------------------------------------------------------
-  --  PLUG-IN «FAQ» (REGION TYPE)
-  ----------------------------------------------------------------------------
-  wwv_flow_api.create_plugin(
-      p_id                 => wwv_flow_api.id(910001),
-      p_plugin_type        => 'REGION TYPE',
-      p_name               => 'FAQ_REGION',
-      p_display_name       => 'FAQ (Questions / Answers)',
-      p_supported_ui_types => 'DESKTOP',
-      p_api_version        => 2,
-      p_render_function    => 'FAQ_RENDER',
-      p_standard_attributes=> 'SOURCE_SQL',
-      p_version_identifier => '1.0');
+# Документация: Принцип работы единой страницы для всех дашбордов
 
-  ----------------------------------------------------------------------------
-  --  ATTRIBUTE 1 – Номер столбца с вопросом
-  ----------------------------------------------------------------------------
-  wwv_flow_api.create_plugin_attribute(
-      p_id                    => wwv_flow_api.id(910002),
-      p_plugin_id             => wwv_flow_api.id(910001),
-      p_attribute_scope       => 'COMPONENT',
-      p_attribute_sequence    => 1,
-      p_display_sequence      => 10,
-      p_prompt                => 'Question column #',
-      p_attribute_type        => 'NUMBER',
-      p_is_required           => 'YES',
-      p_is_translatable       => 'NO',
-      p_help_text             => 'Позиция колонки SQL-запроса с вопросом');
+## 1. Введение
+Единая страница для всех дашбордов реализована для унификации процесса отображения и управления доступом к визуализациям данных. Основная цель системы — предоставить пользователям возможность выбирать дашборды через интерфейс поиска и динамически подгружать контент, сохраняя при этом безопасность и гибкость управления.
 
-  ----------------------------------------------------------------------------
-  --  ATTRIBUTE 2 – Номер столбца с ответом
-  ----------------------------------------------------------------------------
-  wwv_flow_api.create_plugin_attribute(
-      p_id                    => wwv_flow_api.id(910003),
-      p_plugin_id             => wwv_flow_api.id(910001),
-      p_attribute_scope       => 'COMPONENT',
-      p_attribute_sequence    => 2,
-      p_display_sequence      => 20,
-      p_prompt                => 'Answer column #',
-      p_attribute_type        => 'NUMBER',
-      p_is_required           => 'YES',
-      p_is_translatable       => 'NO',
-      p_help_text             => 'Позиция колонки SQL-запроса с ответом (HTML/CLOB)');
+---
 
-  ----------------------------------------------------------------------------
-  --  РЕАЛИЗАЦИЯ render-функции
-  ----------------------------------------------------------------------------
-  wwv_flow_api.set_plugin_code(
-      p_plugin_id  => wwv_flow_api.id(910001),
-      p_plsql_code => q'~
-FUNCTION faq_render (
-        p_region               IN apex_plugin.t_region,
-        p_plugin               IN apex_plugin.t_plugin,
-        p_is_printer_friendly  IN BOOLEAN)
-  RETURN apex_plugin.t_region_render_result
-IS
-  l_q_col   PLS_INTEGER := NVL( TO_NUMBER(p_region.attribute_01), 1 );
-  l_a_col   PLS_INTEGER := NVL( TO_NUMBER(p_region.attribute_02), 2 );
-  l_rows    apex_plugin_util.t_column_value_list;
-BEGIN
-  -- получаем данные из Source SQL
-  l_rows := apex_plugin_util.get_data(
-              p_sql_statement  => p_region.source,
-              p_min_columns    => GREATEST(l_q_col,l_a_col),
-              p_max_columns    => GREATEST(l_q_col,l_a_col),
-              p_component_name => p_region.name);
+## 2. Основные компоненты системы
 
-  -- стили
-  sys.htp.p('
-  <style>
-    .faq-q{background:#eee;border:none;padding:8px;width:100%;text-align:left;cursor:pointer;font-weight:600;margin:4px 0}
-    .faq-q[aria-expanded="true"]::after{content:"▲";float:right}
-    .faq-q[aria-expanded="false"]::after{content:"▼";float:right}
-    .faq-a{display:none;padding:8px 12px;background:#fafafa;border:1px solid #e4e4e4;margin-bottom:6px}
-  </style>');
+### 2.1 Таблица `bi_portal_map`
+Хранит информацию о доступных дашбордах. Структура таблицы:
+- **`dashboard_id`** (PK) — уникальный идентификатор дашборда.
+- **`dashboard_name`** — наименование дашборда для отображения пользователю.
+- **`url_template`** — URL-адрес, по которому доступен дашборд (может содержать параметры).
+- **`access_rules`** — правила доступа (например, роли пользователей или группы).
 
-  -- вывод
-  FOR i IN 1 .. NVL(l_rows(l_q_col).COUNT,0) LOOP
-     sys.htp.p('<button class="faq-q" aria-expanded="false">'
-               || apex_escape.html(l_rows(l_q_col)(i)) || '</button>');
-     sys.htp.p('<div class="faq-a">'|| l_rows(l_a_col)(i) ||'</div>');
-  END LOOP;
+Пример записи:
+```sql
+INSERT INTO bi_portal_map (dashboard_id, dashboard_name, url_template, access_rules)
+VALUES (1, 'Финансовая аналитика', '/dashboards/finance?token=123', 'role_admin,role_finance');
+```
 
-  -- JS
-  apex_javascript.add_onload_code(q'JS(
-    document.querySelectorAll(".faq-q").forEach(function(btn){
-      btn.addEventListener("click",function(){
-        var ans = this.nextElementSibling;
-        var open = this.getAttribute("aria-expanded")==="true";
-        this.setAttribute("aria-expanded", !open);
-        ans.style.display = open ? "none":"block";
-      });
-    });
-  )JS');
-  RETURN NULL;
-END faq_render;
-~');
+---
 
-  COMMIT;
-END;
-/
+## 3. Процесс работы системы
+
+### 3.1 Выбор дашборда пользователем
+1. Пользователь заходит на страницу поиска дашбордов.
+2. Выбирает нужный дашборд из карточек/списка.
+3. Система перенаправляет пользователя на **единую шаблонную страницу** (например, `/dashboard/view`) с передачей:
+   - `dashboard_id` (через параметры URL: `/dashboard/view?dashboard_id=1`).
+   - `dashboard_name` (через скрытое поле или API-запрос).
+
+### 3.2 Загрузка шаблонной страницы
+1. На сервере:
+   - Полученный `dashboard_id` сохраняется в переменную (например, `$dashboardId`).
+   - Выполняется SQL-запрос к таблице `bi_portal_map` для получения `url_template`:
+     ```sql
+     SELECT url_template, dashboard_name 
+     FROM bi_portal_map 
+     WHERE dashboard_id = $dashboardId;
+     ```
+   - Результат сохраняется в переменные (например, `$dashboardUrl`, `$dashboardName`).
+
+2. На клиенте (JavaScript):
+   - Вставляется наименование дашборда в шапку страницы:
+     ```javascript
+     document.getElementById('dashboard-title').innerText = "<?php echo $dashboardName; ?>";
+     ```
+   - Обновляется заголовок вкладки браузера:
+     ```javascript
+     document.title = "<?php echo $dashboardName; ?> | BI Portal";
+     ```
+
+### 3.3 Вставка URL дашборда
+1. URL дашборда динамически вставляется в iframe или редиректится пользователь:
+   ```html
+   <iframe src="<?php echo $dashboardUrl; ?>" width="100%" height="800px"></iframe>
+   ```
+
+---
+
+## 4. Проверка доступа
+
+### 4.1 Бэкенд-валидация
+Перед загрузкой контента выполняется проверка прав доступа:
+1. Функция `checkAccess($dashboardId, $userId)`:
+   - Получает `access_rules` для дашборда из `bi_portal_map`.
+   - Сравнивает правила с ролями/правами текущего пользователя.
+2. Если доступ запрещён:
+   - Перенаправление на страницу ошибки (`/access-denied`).
+   - Логирование попытки доступа.
+
+Пример реализации:
+```php
+function checkAccess(int $dashboardId, string $userId): bool {
+    $rules = getAccessRulesFromDB($dashboardId); // ['role_admin', 'role_finance']
+    $userRoles = getUserRoles($userId); // ['role_user', 'role_guest']
+    return !empty(array_intersect($rules, $userRoles));
+}
+```
+
+---
+
+## 5. Обработка ошибок
+- **Дашборд не найден**: 
+  - Отображается сообщение: "Дашборд с ID={$dashboardId} не существует".
+  - Логирование ошибки в систему.
+- **Ошибка доступа**: 
+  - Пользователь перенаправляется на страницу `/access-denied` с указанием причины.
+- **Сетевые ошибки**: 
+  - Таймаут подключения к дашборду — отображение прелоадера с сообщением "Попробуйте позже".
+
+---
+
+## 6. Преимущества архитектуры
+- **Масштабируемость**: Добавление новых дашбордов требует только записи в `bi_portal_map`.
+- **Единый интерфейс**: Упрощает навигацию и обучение пользователей.
+- **Контроль доступа**: Гибкие правила через `access_rules`.
+- **Безопасность**: Централизованная проверка прав на бэкенде.
+
+---
+
+## 7. Диаграмма взаимодействия
+```
+Пользователь → [Выбор дашборда] → Передача dashboard_id → 
+→ [Сервер: Получение URL и проверка прав] → 
+→ [Клиент: Отображение дашборда] → 
+→ [JavaScript: Обновление заголовка]
+```
+
+---
+
+## 8. Заключение
+Реализация единой страницы для дашбордов обеспечивает единый UX, централизованное управление доступом и простоту расширения. Для поддержания системы рекомендуется регулярно обновлять записи в таблице `bi_portal_map` и настраивать правила доступа в соответствии с бизнес-требованиями.

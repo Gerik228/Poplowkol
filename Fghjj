@@ -1,7 +1,0 @@
-select
-  id,
-  name,
-  mime_type,
-  'https://vld-srvapex-tst01.pskb.ad/ords/f?p=112:100:::NO::P100_ID=' || id as image_url,
-  '<img src="https://vld-srvapex-tst01.pskb.ad/ords/f?p=112:100:::NO::P100_ID=' || id || '" width="100">' as preview
-from product_images

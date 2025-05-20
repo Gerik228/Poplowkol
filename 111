@@ -1,3 +1,217 @@
+Подробная инструкция — создание и настройка REST-сервиса «LOG_LOGOUT» в Oracle APEX 23.1 / ORDS 23.x
+
+> Цель: получать запрос POST от JavaScript (navigator.sendBeacon) и проставлять logout_time в таблице PAGE_VISIT_LOG.
+Ниже даны шаги «с нуля»: проверка ORDS, включение схемы, создание модуля-шаблона-обработчика, защита, тестирование и типичные ошибки.
+
+
+
+
+---
+
+0  Предварительные условия
+
+Что	Как проверить
+
+ORDS установлен	SQL Plus → SELECT ords.installed_version FROM dual;
+APEX 23.1 работает через ORDS	URL вида https://<host>/ords/f?p=... открывает вашу рабочую область
+Пользователь-схема (MY_APP) имеет права на таблицу PAGE_VISIT_LOG	DESC my_app.page_visit_log
+
+
+
+---
+
+1  Включаем схему в ORDS (один раз)
+
+BEGIN
+  ORDS.ENABLE_SCHEMA(
+      p_enabled             => TRUE,
+      p_schema              => 'MY_APP',          -- ваша схема
+      p_url_mapping_type    => 'BASE_PATH',
+      p_url_mapping_pattern => 'my_app',          -- часть URL
+      p_auto_rest_auth      => FALSE);            -- будем аутентифицировать APEX-сессией
+END;
+/
+
+Если ORDS уже был включён ― пропустите.
+
+Проверьте: SELECT status FROM user_ords_enabled_schemas; — статус должен быть ENABLED.
+
+
+---
+
+2  Создаём REST-модуль, шаблон и обработчик
+
+> Маршрут будет:
+POST /ords/<workspace>/my_app/log/log-logout/:log_id
+
+
+
+2.1  Открыть мастер
+
+SQL Workshop → RESTful Services → ORDS Based → Create (Module).
+
+2.2  Модуль
+
+Поле	Значение
+
+Name	LOG_AUDIT
+Base Path	/log/
+Privileges	(оставить пустым — защитим модуль «Application Express» позже)
+
+
+Create Module.
+
+2.3  Шаблон
+
+Поле	Значение
+
+URI Template	log-logout/:log_id
+Priority	0 (по умолчанию)
+
+
+Create Template.
+
+2.4  Обработчик
+
+Поле	Значение
+
+Method	POST
+Source Type	PL/SQL
+MIME Types Produced	text/plain
+Source	см. ниже
+
+
+DECLARE
+    -- :log_id приходит из URI-шаблона
+BEGIN
+    UPDATE page_visit_log
+       SET logout_time = SYSTIMESTAMP
+     WHERE log_id      = :log_id
+       AND logout_time IS NULL;
+
+    COMMIT;                           -- фиксация автономно
+    ORDS.SET_STATUS(204);             -- «No Content» ← браузеру нечего ждать
+END;
+
+Create Handler → Save.
+
+2.5  Защита (Authentication)
+
+На странице Module Details:
+
+Requires Privilege → Application Express.
+Тогда запрос примет только та же APEX-сессия, что открыла страницу.
+Cookie ORA_WWV_APP_<sessid> автоматически пойдёт в запросе, потому что URL той же площадки ― CORS не нужен.
+
+
+Сохраняем.
+
+
+---
+
+3  URL, который будем дергать из JavaScript
+
+/ords/<workspace>/my_app/log/log-logout/<P_LOG_ID>
+
+Пример:
+/ords/hr_ws/my_app/log/log-logout/12345
+
+Если страница и ORDS в одном домене, можно вызывать относительным путём:
+
+var url = '/ords/my_app/log/log-logout/' + $v('P_LOG_ID');
+
+
+---
+
+4  Исправляем JavaScript-обработчик выхода
+
+(function () {
+  if (window._logoutHookAdded) return;
+  window._logoutHookAdded = true;
+
+  function logExit() {
+    if (window._logSent) return;
+    window._logSent = true;
+
+    var url = '/ords/my_app/log/log-logout/' + $v('P_LOG_ID');
+
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon(url, 'x');      // тело «x» — требуется POST
+    } else {
+      fetch(url, { method: 'POST', keepalive: true, body: 'x' })
+        .catch(() => {});
+    }
+  }
+
+  window.addEventListener('beforeunload', logExit);
+})();
+
+Почему body: 'x'?
+sendBeacon требует тело (POST). Тип будет text/plain, что мы и указали в обработчике.
+
+
+---
+
+5  Проверяем сервис
+
+curl -i -X POST \
+     -u <workspace_user>:<password> \
+     https://<host>/ords/<workspace>/my_app/log/log-logout/1
+
+Ожидаем HTTP 204.
+
+
+---
+
+6  Частые ошибки
+
+Симптом	Причина / решение
+
+404 Not Found	Неправильный base-path (my_app) или шаблон. Проверьте URL на вкладке Endpoint URL в редакторе шаблона.
+401 Unauthorized	APEX-cookie не пришёл (другой домен) либо модуль защищён привилегией, а запрос идёт без сессии. Убедитесь, что вызов идёт из той же страницы APEX.
+CORS preflight	Возникает, если вы меняете Content-Type на application/json. Оставьте text/plain либо настройте Access-Control-Allow-Origin/Allow-Credentials в ORDS standalone.properties. 
+logout_time не заполняется	Проверьте, что в таблице при входе действительно вставляется log_id, и что JS отправляет корректный ID (посмотрите DevTools → Network).
+
+
+
+---
+
+7  (Необязательно) возврат только одной строки JSON
+
+Чтобы в ответе REST-службы вернуть 1 строку JSON-подтверждения, в обработчике вместо ORDS.SET_STATUS(204):
+
+ORDS.SYS.ORDS.SET_HTTP_STATUS(200);
+ORDS.SYS.ORDS.WRITE_JSON_OBJECT('{"result":"ok"}');
+
+Но для sendBeacon ответ всё равно не читается, поэтому 204 — оптимально.
+
+
+---
+
+8  Что почитать дальше
+
+Официальный раздел Managing RESTful Service Modules (APEX 23.1 Doc) — базовые шаги создания модуля, шаблона и обработчика. 
+
+Список «Implicit Parameters» для обработчиков (:log_id, :body_text и т.д.). 
+
+Подробности о navigator.sendBeacon и почему он надёжен при закрытии вкладки. 
+
+
+Теперь REST-сервис полностью готов и будет получать запросы из вашего JavaScript-кода выхода, точно фиксируя logout_time.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 **Универсальная реализация логирования в APEX 23.1 с обработкой всех сценариев выхода**
 
 ---

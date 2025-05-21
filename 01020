@@ -1,3 +1,40 @@
+<script>
+  var logId = $v('P66_LOG_ID'); 
+  var logoutUrl = '/ords/web_rnd/log/log-logout/' + logId;
+  var sent = false;
+
+  function sendLogout() {
+    if (!logId || sent) return;
+    navigator.sendBeacon(logoutUrl);
+    sent = true;
+  }
+
+  // 1. События ухода со страницы (всегда нужны)
+  window.addEventListener('pagehide', sendLogout);
+  window.addEventListener('beforeunload', sendLogout);
+
+  // 2. Навигация APEX (в том числе кнопка "Назад")
+  document.addEventListener('apexnavigationbegin', sendLogout);
+
+  // 3. Таймаут неактивности — 5 мин
+  var idleTimer;
+  function resetIdleTimer() {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(sendLogout, 300000); // 5 минут
+  }
+  ['click', 'mousemove', 'keydown', 'scroll', 'touchstart'].forEach(evt =>
+    document.addEventListener(evt, resetIdleTimer, { passive: true })
+  );
+  resetIdleTimer();
+</script>
+
+
+
+
+
+
+
+
 Инструкция по логированию активности на странице Oracle APEX 23.1
 
 1. Создание таблицы логов

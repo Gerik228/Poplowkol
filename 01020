@@ -1,4 +1,52 @@
 <script>
+(function () {
+  /* --- 1. Параметры ---------------------------------------------------- */
+  const logId = $v('P66_LOG_ID');
+  if (!logId) return;                              // если ID не пришёл – выходим
+  const url   = '/ords/web_rnd/log/log-logout/' + logId;
+  let   sent  = false;                             // защита от повторов
+
+  /* --- 2. Универсальная отправка -------------------------------------- */
+  function sendLogout() {
+    if (sent) return;                              // уже отправили
+    navigator.sendBeacon(url, 'x');                // лёгкое тело (1-байт)
+    sent = true;
+  }
+
+  /* --- 3. События закрытия/скрытия вкладки ---------------------------- */
+  window.addEventListener('pagehide', sendLogout);               // закрытие
+  window.addEventListener('beforeunload', sendLogout);           // перезагрузка
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') sendLogout();     // вкладка ушла
+  });
+
+  /* --- 4. Переходы внутри APEX, «Назад/Вперёд» ------------------------ */
+  document.addEventListener('apexnavigationbegin', evt => {
+    evt.detail.defer(resume => {          // приостанавливаем навигацию
+      sendLogout();                       // отправляем Beacon
+      setTimeout(resume, 120);            // ждём 120 мс и продолжаем переход
+    });
+  });
+
+  /* --- 5. Таймаут неактивности (5 мин) -------------------------------- */
+  let idleTimer;
+  const resetIdle = () => {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(sendLogout, 300_000);   // 300 000 мс = 5 мин
+  };
+  ['pointermove','keydown','click','touchstart']
+    .forEach(evt => document.addEventListener(evt, resetIdle, { passive:true }));
+  resetIdle();                                     // запустить таймер
+})();
+</script>
+
+
+
+
+
+
+
+<script>
   var logId = $v('P66_LOG_ID'); 
   var logoutUrl = '/ords/web_rnd/log/log-logout/' + logId;
   var sent = false;

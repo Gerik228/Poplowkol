@@ -1,3 +1,34 @@
+
+DECLARE
+  PRAGMA AUTONOMOUS_TRANSACTION;   -- <-- коммит независим
+BEGIN
+  UPDATE bi_portal_audit_log
+     SET logout_time  = SYSTIMESTAMP,
+         duration_sec = TRUNC( (SYSTIMESTAMP - login_time) * 86400 )
+   WHERE log_id       = :log_id
+     AND logout_time  IS NULL;
+
+  COMMIT;                          -- фиксируем мгновенно
+  ORDS.set_status(204);            -- No Content
+EXCEPTION
+  WHEN OTHERS THEN
+    -- Логируем ошибку (по желанию) и всё-таки отвечаем 204,
+    -- чтобы браузер не висел
+    INSERT INTO bi_portal_audit_log_err(log_id, err_msg, err_dt)
+    VALUES (:log_id, SQLERRM, SYSTIMESTAMP);
+    COMMIT;
+    ORDS.set_status(204);
+END;
+
+
+
+
+
+
+
+
+
+
 DECLARE
   PRAGMA AUTONOMOUS_TRANSACTION;
 BEGIN

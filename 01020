@@ -1,0 +1,172 @@
+/**
+ * Оптимизированный код для автоматического выхода в Oracle APEX 23.1
+ * - Обрабатывает уход со страницы, переходы между страницами и таймаут бездействия
+ * - Использует дебаунсинг и оптимизированные подписки на события
+ * - Поддерживает все современные браузеры
+ */
+(function() {
+  'use strict';
+  
+  // Скрываем прокрутку для предотвращения дрожания при модальных окнах
+  document.body.style.overflow = 'hidden';
+  
+  // Константы и настройки
+  const CONFIG = {
+    logoutUrl: '/ords/web_rnd/l/lout/' + 'P49_LOG_ID',
+    idleTimeout: 300000, // 5 минут в миллисекундах
+    navigationDelay: 120, // Задержка перед продолжением навигации (мс)
+    debug: false // Включить логирование для отладки
+  };
+  
+  // Состояние приложения
+  const STATE = {
+    logoutSent: false,
+    idleTimer: null,
+    lastActivity: Date.now()
+  };
+  
+  /**
+   * Отправляет запрос на выход с использованием sendBeacon
+   * @return {boolean} Результат отправки запроса
+   */
+  function sendLogout() {
+    try {
+      // Защита от повторной отправки
+      if (!CONFIG.logoutUrl || STATE.logoutSent) {
+        return false;
+      }
+      
+      // Используем более эффективный и надежный метод sendBeacon
+      const success = navigator.sendBeacon(CONFIG.logoutUrl);
+      
+      if (success) {
+        STATE.logoutSent = true;
+        debug('Logout запрос успешно отправлен');
+      } else {
+        debug('Ошибка отправки Beacon, пробуем fetch');
+        // Резервный метод, если sendBeacon не сработал
+        fetch(CONFIG.logoutUrl, {
+          method: 'POST',
+          keepalive: true,
+          credentials: 'same-origin'
+        }).catch(err => debug('Ошибка резервного метода logout:', err));
+      }
+      
+      return success;
+    } catch (error) {
+      debug('Ошибка в функции sendLogout:', error);
+      return false;
+    }
+  }
+  
+  /**
+   * Сбрасывает таймер неактивности
+   */
+  function resetIdleTimer() {
+    STATE.lastActivity = Date.now();
+    
+    clearTimeout(STATE.idleTimer);
+    STATE.idleTimer = setTimeout(sendLogout, CONFIG.idleTimeout);
+    
+    // Если уже был выход по неактивности, но пользователь вернулся
+    if (STATE.logoutSent) {
+      debug('Пользователь снова активен после логаута, перезагружаем страницу');
+      location.reload();
+    }
+  }
+  
+  /**
+   * Дебаунсинг для событий активности
+   * @param {Function} func - Функция для выполнения
+   * @param {number} wait - Задержка в мс
+   */
+  function debounce(func, wait = 150) {
+    let timeout;
+    return function executedFunction(...args) {
+      const later = () => {
+        clearTimeout(timeout);
+        func(...args);
+      };
+      clearTimeout(timeout);
+      timeout = setTimeout(later, wait);
+    };
+  }
+  
+  /**
+   * Функция отладки
+   */
+  function debug(...args) {
+    if (CONFIG.debug) {
+      console.log(`[APEX Logout][${new Date().toISOString()}]`, ...args);
+    }
+  }
+  
+  /**
+   * Обработчик начала навигации в APEX
+   */
+  function handleApexNavigation(evt) {
+    try {
+      evt.detail.defer(resume => {
+        // Отправляем запрос на выход
+        sendLogout();
+        
+        // Ждем указанное время и продолжаем переход
+        setTimeout(resume, CONFIG.navigationDelay);
+      });
+    } catch (error) {
+      debug('Ошибка при обработке apexnavigationbegin:', error);
+    }
+  }
+  
+  /**
+   * Обработчик изменения видимости страницы
+   */
+  function handleVisibilityChange() {
+    if (document.visibilityState === 'hidden') {
+      // Сохраняем время скрытия для возможной проверки длительности
+      STATE.hiddenTime = Date.now();
+      
+      // Можно добавить задержку перед логаутом при скрытии вкладки
+      // чтобы не выходить сразу при переключении
+      setTimeout(() => {
+        if (document.visibilityState === 'hidden' && 
+            Date.now() - STATE.hiddenTime > 5000) { // 5 секунд
+          sendLogout();
+        }
+      }, 5000);
+    } else {
+      // Пользователь вернулся, сбрасываем таймер
+      resetIdleTimer();
+    }
+  }
+  
+  // Оптимизированная обработка событий активности
+  const handleUserActivity = debounce(resetIdleTimer);
+  
+  // Регистрация обработчиков
+  function registerEventHandlers() {
+    // События закрытия страницы
+    window.addEventListener('pagehide', sendLogout);
+    window.addEventListener('beforeunload', sendLogout);
+    
+    // Событие видимости страницы
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    // События навигации в APEX
+    document.addEventListener('apexnavigationbegin', handleApexNavigation);
+    
+    // События активности пользователя с оптимизацией
+    const activityEvents = ['click', 'mousemove', 'keydown', 'scroll', 'touchstart'];
+    activityEvents.forEach(eventType => {
+      document.addEventListener(eventType, handleUserActivity, { passive: true });
+    });
+    
+    // Инициализация таймера
+    resetIdleTimer();
+    
+    debug('Обработчики событий успешно зарегистрированы');
+  }
+  
+  // Инициализация
+  registerEventHandlers();
+})();

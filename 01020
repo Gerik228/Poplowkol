@@ -1,3 +1,19 @@
+DECLARE
+  PRAGMA AUTONOMOUS_TRANSACTION;
+BEGIN
+  UPDATE web_rnd.audit_log
+     SET logout_time  = SYSTIMESTAMP,
+         duration_sec = FLOOR((SYSTIMESTAMP - login_time) * 86400)
+   WHERE log_id       = :log_id            -- приходит из URI
+     AND logout_time IS NULL;
+
+  COMMIT;
+  ORDS.set_status(204);
+END;
+
+
+
+
 “Работает как часы” — финальная архитектура логирования выхода
 
 > Цель – фиксируем ВСЕ виды ухода (переход, «Назад», закрытие, таймаут, даже офлайн-режим) с минимальной задержкой и нулевыми пропусками.

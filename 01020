@@ -1,3 +1,33 @@
+DECLARE
+  PRAGMA AUTONOMOUS_TRANSACTION;
+BEGIN
+  UPDATE bi_portal_audit_log
+     SET logout_time  = SYSTIMESTAMP,
+         -- длительность в секундах
+         duration_sec = FLOOR((SYSTIMESTAMP - login_time) * 86400)
+   WHERE log_id       = :log_id
+     AND logout_time IS NULL;
+
+  COMMIT;
+  ORDS.set_status(204);          -- «OK, без содержимого»
+END;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 DECLARE
   PRAGMA AUTONOMOUS_TRANSACTION;   -- <-- коммит независим

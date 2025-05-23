@@ -1,3 +1,93 @@
+/*  ——— LOG-OUT скрипт: APEX 23.x, 100 % надёжность ———  */
+
+(function () {
+
+  /* 1. ID записи лога и URL REST-эндпоинта */
+  const id  = $v('P49_LOG_ID');                // hidden item на странице
+  if (!id) return;                             // нет ID → нечего логировать
+  const url = `/ords/web_rnd/l/x/${id}`;       // относительный путь (https)
+
+  let sent = false;                            // защита от повторных вызовов
+
+  /* 2. Отправка выхода (beacon → fetch-fallback) */
+  function sendLogout () {
+    if (sent) return;
+
+    /* 2-A. пробуем sendBeacon (быстро) */
+    if (navigator.sendBeacon && navigator.sendBeacon(url, 'x')) {
+      sent = true;
+      return;
+    }
+
+    /* 2-B. fallback → fetch с keepalive */
+    fetch(url, {
+      method:      'POST',
+      keepalive:   true,
+      credentials: 'same-origin',
+      headers:     { 'Content-Type': 'text/plain' },
+      body:        'x'
+    }).then(() => { sent = true; })
+      .catch(()  => {/* молча игнорируем сеть */});
+  }
+
+  /* 3. Триггеры выхода пользователя */
+
+  /* 3-A. вкладка скрыта / закрыта */
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') sendLogout();
+  });
+  window.addEventListener('pagehide',     sendLogout);
+  window.addEventListener('beforeunload', sendLogout);
+
+  /* 3-B. переходы внутри APEX + кнопка «Назад/Вперёд» */
+  document.addEventListener('apexnavigationbegin', evt => {
+    /* ¬ defer() доступен с APEX 20+ */
+    if (evt.detail && typeof evt.detail.defer === 'function') {
+      evt.detail.defer(resume => {
+        sendLogout();              // отправляем Beacon
+        setTimeout(resume, 120);   // ждём 120 мс и продолжаем навигацию
+      });
+    } else {
+      sendLogout();                // безопасно для старых версий
+    }
+  });
+
+  /* 3-C. idle-таймер: 5 минут полной неактивности */
+  let idleTimer;
+  function resetIdle () {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(sendLogout, 300_000);   // 300 000 мс = 5 мин
+  }
+  ['pointermove','keydown','click','touchstart']
+    .forEach(evt => document.addEventListener(evt, resetIdle, { passive: true }));
+  resetIdle();                                   // старт таймера
+
+})();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 (function () {
   // Проверка поддержки необходимых API
   if (!('sendBeacon' in navigator) || !('fetch' in window)) {

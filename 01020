@@ -1,3 +1,72 @@
+(function(){
+  const logId = $v('P49_LOG_ID');
+  if (!logId) return;
+  const logoutUrl = `/ords/web_rnd/log/log-logout/${logId}`;
+  let sent = false;
+
+  function sendLogout(source) {
+    if (sent) return;
+    sent = true;
+    console.log(`[LOGOUT] from ${source} at ${new Date().toLocaleTimeString()}`);
+    navigator.sendBeacon(logoutUrl);
+  }
+
+  // Таймер неактивности: 5 минут
+  let idleTimer;
+  function resetIdleTimer() {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => sendLogout('idle 5m'), 300000);
+  }
+
+  // События активности пользователя
+  ['mousemove', 'keydown', 'click', 'touchstart'].forEach(event =>
+    document.addEventListener(event, resetIdleTimer, { passive: true })
+  );
+  resetIdleTimer();
+
+  // Обработка скрытия вкладки
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      sendLogout('visibilitychange');
+    }
+  });
+
+  // Обработка ухода со страницы
+  window.addEventListener('pagehide', () => sendLogout('pagehide'));
+  window.addEventListener('beforeunload', () => sendLogout('beforeunload'));
+
+  // Обработка переходов между страницами APEX
+  document.addEventListener('apexnavigationbegin', evt => {
+    if (!evt.detail?.defer) {
+      sendLogout('navigation');
+      return;
+    }
+    evt.detail.defer(resume => {
+      sendLogout('navigation-defer');
+      setTimeout(resume, 120);
+    });
+  });
+})();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 (function(){
   const id  = $v('P49_LOG_ID');

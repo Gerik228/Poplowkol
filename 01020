@@ -1,3 +1,65 @@
+
+(function(){
+  const id  = $v('P49_LOG_ID');
+  if(!id) return;
+  const url = `/ords/web_rnd/l/x/${id}`;
+  let sent  = false;
+
+  function sendLogout(src){
+    if(sent) return;
+    console.warn('[LOGOUT] from',src,'at',new Date().toLocaleTimeString());
+    navigator.sendBeacon(url,'x');
+    sent = true;
+  }
+
+  /* -------- idle timer -------- */
+  let idleT;
+  function resetIdle(){
+    clearTimeout(idleT);
+    console.log('[IDLE] reset',new Date().toLocaleTimeString());
+    idleT = setTimeout(()=>sendLogout('idle 5m'), 300000);
+  }
+  ['pointermove','mousemove','keydown','click','touchstart']
+    .forEach(e=>document.addEventListener(e,resetIdle,{passive:true}));
+  resetIdle();
+
+  /* -------- другие триггеры ---- */
+  document.addEventListener('visibilitychange', ()=> {
+    if(document.visibilityState==='hidden') sendLogout('visHidden');
+  });
+  window.addEventListener('pagehide',     ()=>sendLogout('pagehide'));
+  window.addEventListener('beforeunload', ()=>sendLogout('beforeunload'));
+
+  document.addEventListener('apexnavigationbegin', evt=>{
+    if(!evt.detail?.defer) return sendLogout('navNoDefer');
+    evt.detail.defer(resume=>{
+      sendLogout('navDefer');
+      setTimeout(resume,120);
+    });
+  });
+})();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /*  ——— LOG-OUT скрипт: APEX 23.x, 100 % надёжность ———  */
 
 (function () {

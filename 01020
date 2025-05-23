@@ -1,3 +1,169 @@
+(function () {
+  // Проверка поддержки необходимых API
+  if (!('sendBeacon' in navigator) || !('fetch' in window)) {
+    console.warn('Logout script skipped: unsupported browser');
+    return;
+  }
+
+  /*------------------------------------------------------------------
+    0. Получаем log_id и формируем URL (адаптировано для локального сервера)
+  ------------------------------------------------------------------*/
+  const LOG_ID_ITEM = 'P66_LOG_ID'; // Имя скрытого поля в APEX
+  let id = $v(LOG_ID_ITEM);         // Получаем из APEX
+
+  // Если item не найден, пробуем взять из сессии
+  if (!id) {
+    id = sessionStorage.getItem('apx_log_id');
+    if (!id) return; // Нет данных для логаута
+  }
+
+  // Сохраняем в сессию на случай PPR-обновления
+  sessionStorage.setItem('apx_log_id', id);
+
+  // Формируем URL (адаптируйте под ваш локальный сервер и порт)
+  const ORDS_HOST = 'http://localhost:7070'; // Порт ORDS
+  const url = `${ORDS_HOST}/ords/web_rnd/l/x/${id}`;
+  const oKey = `log_${id}`;
+  let sent = false;
+  let retryCount = 0;
+  const MAX_RETRIES = 3;
+
+  /*------------------------------------------------------------------
+    1. Универсальная отправка (beacon → fetch)
+  ------------------------------------------------------------------*/
+  function reallySend() {
+    if (sent || retryCount >= MAX_RETRIES) return false;
+
+    try {
+      // 1-A. sendBeacon (низкоприоритетный запрос)
+      if (navigator.sendBeacon && navigator.sendBeacon(url, 'x')) {
+        sent = true;
+        return true;
+      }
+
+      // 1-B. Fallback: fetch keepalive
+      fetch(url, {
+        method: 'POST',
+        keepalive: true,
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'text/plain' },
+        body: 'x'
+      })
+        .then(() => { sent = true; })
+        .catch(err => {
+          console.error('Logout failed:', err);
+          retryCount++;
+          // Сохраняем в localStorage для повторной попытки
+          if (err.name !== 'AbortError') {
+            try {
+              localStorage.setItem(oKey, Date.now().toString());
+            } catch (storageErr) {
+              console.warn('LocalStorage quota exceeded:', storageErr);
+            }
+          }
+        });
+
+      return true;
+    } catch (err) {
+      console.error('Critical error in reallySend:', err);
+      return false;
+    }
+  }
+
+  /*------------------------------------------------------------------
+    2. Отправка + offline-резерв
+  ------------------------------------------------------------------*/
+  function sendLogout() {
+    if (sent) return;
+    
+    const result = reallySend();
+    if (!result) {
+      // Резервная попытка сохранения
+      try {
+        localStorage.setItem(`pending_${oKey}`, '1');
+      } catch (e) {
+        console.warn('Offline storage failed:', e);
+      }
+    }
+  }
+
+  /*------------------------------------------------------------------
+    3. Обработка "хвостов" при повторном входе
+  ------------------------------------------------------------------*/
+  try {
+    const now = Date.now();
+    Object.keys(localStorage).filter(k => k.startsWith('log_'))
+      .forEach(k => {
+        // Очистка старых записей (>24ч)
+        if (parseInt(localStorage.getItem(k) || '0') < now - 86400000) {
+          localStorage.removeItem(k);
+          return;
+        }
+        
+        // Повторная отправка
+        const logId = k.split('_')[1];
+        fetch(`${ORDS_HOST}/ords/web_rnd/l/x/${logId}`, {
+          method: 'POST',
+          keepalive: true,
+          body: 'x'
+        }).catch(console.error);
+        
+        localStorage.removeItem(k);
+      });
+  } catch (e) {
+    console.error('Failed to process offline logs:', e);
+  }
+
+  /*------------------------------------------------------------------
+    4. Триггеры выхода
+  ------------------------------------------------------------------*/
+  // 4-A. Скрытие/закрытие вкладки
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') sendLogout();
+  });
+  
+  window.addEventListener('pagehide', sendLogout);
+
+  // 4-B. APEX навигация
+  document.addEventListener('apexnavigationbegin', evt => {
+    if (!evt.detail || typeof evt.detail.defer !== 'function') {
+      return sendLogout();
+    }
+    
+    evt.detail.defer(resume => {
+      sendLogout();
+      // Увеличенный таймаут для надежности
+      setTimeout(() => {
+        resume();
+      }, 500);
+    });
+  });
+
+  // 4-C. Idle timeout (5 мин)
+  let idleT;
+  const resetIdle = () => {
+    clearTimeout(idleT);
+    idleT = setTimeout(() => {
+      sendLogout();
+    }, 300_000); // 5 × 60 × 1000
+  };
+  
+  ['pointermove', 'keydown', 'click', 'touchstart']
+    .forEach(ev => document.addEventListener(ev, resetIdle, { passive: true }));
+  
+  resetIdle();
+
+  // Дополнительная защита
+  window.addEventListener('beforeunload', () => {
+    if (!sent) sendLogout();
+  });
+})();
+
+
+
+
+
+
 Вот улучшенная версия кода с учётом всех рекомендаций:
 
 ```javascript

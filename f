@@ -9,25 +9,34 @@
 
     // Функция отправки лога выхода
     function sendLogout() {
-        if (logoutSent) return;
+        if (logoutSent || sessionStorage.getItem('logoutSent')) return;
         logoutSent = true;
         console.log('Отправка лога выхода:', url);
 
-        // Используем sendBeacon или fetch
-        if (navigator.sendBeacon) {
-            navigator.sendBeacon(url, ' ');
-        } else if (window.fetch) {
-            fetch(url, { method: 'POST', keepalive: true })
-                .catch(error => console.error('Ошибка отправки:', error));
+        // Приоритет: sendBeacon -> fetch с keepalive -> синхронный XMLHttpRequest
+        try {
+            if (navigator.sendBeacon) {
+                navigator.sendBeacon(url, ' ');
+            } else if (window.fetch) {
+                fetch(url, { method: 'POST', keepalive: true })
+                    .catch(error => console.error('Ошибка fetch:', error));
+            } else {
+                // Резервный вариант для старых браузеров
+                var xhr = new XMLHttpRequest();
+                xhr.open('POST', url, false); // Синхронный запрос
+                xhr.send();
+            }
+        } catch (error) {
+            console.error('Ошибка отправки:', error);
         }
 
-        // Дополнительная защита от повторных отправок
         sessionStorage.setItem('logoutSent', 'true');
     }
 
-    // Обработчики событий завершения сессии
+    // Обработчики событий закрытия/перехода
     window.addEventListener('pagehide', sendLogout, { capture: true });
     window.addEventListener('beforeunload', sendLogout, { capture: true });
+    window.addEventListener('unload', sendLogout, { capture: true }); // Добавлено unload
     document.addEventListener('visibilitychange', function () {
         if (document.visibilityState === 'hidden') {
             sendLogout();
@@ -36,10 +45,9 @@
 
     // Таймер бездействия (30 секунд)
     var idleTimer;
-    var idleTimeout = 30000; // 30 секунд
+    var idleTimeout = 30000;
 
     function resetIdle() {
-        console.log('Активность: таймер сброшен');
         clearTimeout(idleTimer);
         idleTimer = setTimeout(() => {
             console.log('Таймер бездействия: выход');
@@ -52,7 +60,7 @@
         document.addEventListener(evt, resetIdle, { passive: true });
     });
 
-    // Инициализация таймера
+    // Инициализация
     resetIdle();
-    console.log('Мониторинг бездействия запущен');
+    console.log('Мониторинг активности запущен');
 })();

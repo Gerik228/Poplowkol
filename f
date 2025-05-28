@@ -5,62 +5,82 @@
         return;
     }
     var url = '/ords/web_rnd/1/x/' + logId;
-    var logoutSent = false;
 
-    // Функция отправки лога выхода
-    function sendLogout() {
-        if (logoutSent || sessionStorage.getItem('logoutSent')) return;
-        logoutSent = true;
-        console.log('Отправка лога выхода:', url);
+    // Отдельные флаги для разных сценариев
+    var navigationLogoutSent = false;
+    var idleLogoutSent = false;
 
-        // Приоритет: sendBeacon -> fetch с keepalive -> синхронный XMLHttpRequest
+    // ==============================================
+    // 1. Логика для закрытия/перехода на другую страницу
+    // ==============================================
+    function handleNavigationExit() {
+        if (navigationLogoutSent || sessionStorage.getItem('navigationLogoutSent')) return;
+        navigationLogoutSent = true;
+        console.log('Лог выхода (навигация):', url);
+
+        // Отправка запроса
         try {
             if (navigator.sendBeacon) {
                 navigator.sendBeacon(url, ' ');
             } else if (window.fetch) {
-                fetch(url, { method: 'POST', keepalive: true })
-                    .catch(error => console.error('Ошибка fetch:', error));
+                fetch(url, { method: 'POST', keepalive: true });
             } else {
-                // Резервный вариант для старых браузеров
                 var xhr = new XMLHttpRequest();
-                xhr.open('POST', url, false); // Синхронный запрос
+                xhr.open('POST', url, false);
                 xhr.send();
             }
         } catch (error) {
-            console.error('Ошибка отправки:', error);
+            console.error('Ошибка отправки (навигация):', error);
         }
 
-        sessionStorage.setItem('logoutSent', 'true');
+        sessionStorage.setItem('navigationLogoutSent', 'true');
     }
 
-    // Обработчики событий закрытия/перехода
-    window.addEventListener('pagehide', sendLogout, { capture: true });
-    window.addEventListener('beforeunload', sendLogout, { capture: true });
-    window.addEventListener('unload', sendLogout, { capture: true }); // Добавлено unload
+    // Обработчики событий навигации
+    window.addEventListener('pagehide', handleNavigationExit, { capture: true });
+    window.addEventListener('beforeunload', handleNavigationExit, { capture: true });
+    window.addEventListener('unload', handleNavigationExit, { capture: true });
     document.addEventListener('visibilitychange', function () {
         if (document.visibilityState === 'hidden') {
-            sendLogout();
+            handleNavigationExit();
         }
     });
+
+    // ==============================================
+    // 2. Логика для таймера бездействия
+    // ==============================================
+    function handleIdleExit() {
+        if (idleLogoutSent || sessionStorage.getItem('idleLogoutSent')) return;
+        idleLogoutSent = true;
+        console.log('Лог выхода (бездействие):', url);
+
+        // Отправка запроса
+        try {
+            fetch(url, { method: 'POST' })
+                .catch(error => console.error('Ошибка отправки (бездействие):', error));
+        } catch (error) {
+            console.error('Ошибка:', error);
+        }
+
+        sessionStorage.setItem('idleLogoutSent', 'true');
+    }
 
     // Таймер бездействия (30 секунд)
     var idleTimer;
     var idleTimeout = 30000;
 
-    function resetIdle() {
+    function resetIdleTimer() {
         clearTimeout(idleTimer);
-        idleTimer = setTimeout(() => {
-            console.log('Таймер бездействия: выход');
-            sendLogout();
-        }, idleTimeout);
+        idleTimer = setTimeout(handleIdleExit, idleTimeout);
+        console.log('Таймер сброшен');
     }
 
-    // Слушатели событий активности
+    // Слушатели активности
     ['mousemove', 'keydown', 'click', 'touchstart'].forEach(function (evt) {
-        document.addEventListener(evt, resetIdle, { passive: true });
+        document.addEventListener(evt, resetIdleTimer, { passive: true });
     });
 
     // Инициализация
-    resetIdle();
-    console.log('Мониторинг активности запущен');
+    resetIdleTimer();
+    console.log('Система мониторинга запущена');
 })();

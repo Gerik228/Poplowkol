@@ -1,76 +1,118 @@
+/* ========================================================================
+ *  Universal APEX Logout / Idle / Navigation tracker
+ *  (c) 2024  — вставьте в “Execute when Page Loads”
+ * ====================================================================== */
 (function () {
-  /* ----------------------------------------------------------
-   * 1. Базовые данные
-   * ---------------------------------------------------------- */
-  const logId = $v('P49_LOG_ID');               // скрытый элемент-сессия
-  if (!logId) { console.error('P49_LOG_ID не найден'); return; }
 
-  const url = `/ords/web_rnd/1/x/${encodeURIComponent(logId)}`;
-  const headers = { 'Content-Type': 'text/plain' };
-  const body    = 'logout';                     // непустое тело для sendBeacon
+  /* --------------------------------------------------------------------
+   * 0. Конфигурация
+   * ------------------------------------------------------------------ */
+  const ITEM_LOG_ID      = 'P49_LOG_ID';          // hidden-item с ID лога
+  const ORDS_PREFIX      = '/ords/web_rnd/1/x/';  // ваш ORDS-модуль и версия
+  const IDLE_TIMEOUT_MS  = 3 * 60 * 1000;         // 3 мин бездействия → idle-logout
+  const ADD_SCROLL_EVENT = true;                  // true = scroll тоже сбрасывает idle
+  const DEBUG            = true;                  // console.log на всю механику
+  const AUTH_HEADER      = null;                  // "Bearer <token>" | null
 
-  /* ----------------------------------------------------------
-   * 2. Отправка запроса (единственная точка)
-   * ---------------------------------------------------------- */
-  function sendLogout(tag) {
-    // чтобы не отправлять повторно (между табами тоже)
-    const key = `${tag}-${logId}`;
-    if (sessionStorage.getItem(key)) return;
-    sessionStorage.setItem(key, 'sent');
+  /* --------------------------------------------------------------------
+   * 1. Получаем log_id из сессии
+   * ------------------------------------------------------------------ */
+  const logId = $v(ITEM_LOG_ID);
+  if (!logId) {
+    console.error(`[audit] Hidden item ${ITEM_LOG_ID} не найден — скрипт остановлен`);
+    return;
+  }
 
-    console.log(`Отправка лога [${tag}]:`, url);
+  /* --------------------------------------------------------------------
+   * 2. Набор URL-ов под разные «причины» выхода
+   *    /x/:log_id/:reason  →  :reason = navigation | idle | button | error
+   * ------------------------------------------------------------------ */
+  const mkUrl = (reason) =>
+    `${ORDS_PREFIX}${encodeURIComponent(logId)}/${reason}`;
 
-    // a) sendBeacon (идеально для закрытия вкладки)
-    if (navigator.sendBeacon?.(url, new Blob([body], { type: 'text/plain' }))) {
-      return;
+  /* общий пакет опций для fetch */
+  const commonFetch = {
+    method   : 'POST',
+    body     : 'logout',                       // любые непустые данные
+    headers  : { 'Content-Type': 'text/plain' },
+    keepalive: true
+  };
+  if (AUTH_HEADER) commonFetch.headers['Authorization'] = AUTH_HEADER;
+
+  const bodyBlob = new Blob(['logout'], { type: 'text/plain' }); // для sendBeacon
+
+  /* --------------------------------------------------------------------
+   * 3. Отправляем запрос ровно ОДИН раз по каждому событию (idle/nav/btn)
+   * ------------------------------------------------------------------ */
+  const sentFlags = Object.create(null);        // in-memory тоже (на случай refresh)
+  function send(reason) {
+    const flag = `${reason}-${logId}`;
+    if (sentFlags[flag] || sessionStorage.getItem(flag)) return;   // защита 2-уровневая
+    sentFlags[flag] = true;
+    sessionStorage.setItem(flag, '1');
+
+    const url = mkUrl(reason);
+    DEBUG && console.log(`[audit] send '${reason}' →`, url);
+
+    /* A) sendBeacon — идеальный вариант закрытия вкладки */
+    if (navigator.sendBeacon) {
+      try {
+        if (navigator.sendBeacon(url, bodyBlob)) return;
+      } catch (_) {/* fallthrough */}
     }
 
-    // b) fetch c keepalive
+    /* B) fetch c keep-alive */
     if (window.fetch) {
-      fetch(url, { method: 'POST', body, headers, keepalive: true })
-        .catch(err => console.error(`fetch-ошибка [${tag}]`, err));
+      fetch(url, commonFetch).catch(e => DEBUG && console.error('[audit] fetch', e));
       return;
     }
 
-    // c) синхронный XHR (старые браузеры)
+    /* C) Legacy — синхронный XHR */
     try {
       const xhr = new XMLHttpRequest();
-      xhr.open('POST', url, false);    // false = синхронно, успевает до unload
+      xhr.open('POST', url, false);                        // false — sync
       xhr.setRequestHeader('Content-Type', 'text/plain');
-      xhr.send(body);
-    } catch (err) {
-      console.error(`XHR-ошибка [${tag}]`, err);
-    }
+      if (AUTH_HEADER) xhr.setRequestHeader('Authorization', AUTH_HEADER);
+      xhr.send('logout');
+    } catch (e) { DEBUG && console.error('[audit] xhr', e); }
   }
 
-  /* ----------------------------------------------------------
-   * 3. Навигация / закрытие вкладки
-   * ---------------------------------------------------------- */
-  const navHandler = () => sendLogout('navigation');
-  window.addEventListener('pagehide',     navHandler, { capture: true });
-  window.addEventListener('beforeunload', navHandler, { capture: true });
-  window.addEventListener('unload',       navHandler, { capture: true });
-
-  // Если вкладка теряет фокус (м.б. PWA / iOS)
+  /* --------------------------------------------------------------------
+   * 4. Навигация / закрытие вкладки
+   * ------------------------------------------------------------------ */
+  const navExit = () => send('navigation');
+  window.addEventListener('pagehide',     navExit, { capture: true });
+  window.addEventListener('beforeunload', navExit, { capture: true });
+  window.addEventListener('unload',       navExit, { capture: true });
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') navHandler();
+    if (document.visibilityState === 'hidden') navExit();
   });
 
-  /* ----------------------------------------------------------
-   * 4. Таймер бездействия
-   * ---------------------------------------------------------- */
-  const idleTimeout = 30_000;   // 30 секунд; измените при необходимости
+  /* --------------------------------------------------------------------
+   * 5. APEX-submit внутри одной вкладки (SPA / PJAX)
+   * ------------------------------------------------------------------ */
+  document.addEventListener('apexbeforepagesubmit', navExit);
+
+  /* --------------------------------------------------------------------
+   * 6. Idle-таймер (бездействие пользователя)
+   * ------------------------------------------------------------------ */
   let idleTimer;
-
-  function resetIdleTimer() {
+  const resetIdle = () => {
     clearTimeout(idleTimer);
-    idleTimer = setTimeout(() => sendLogout('idle'), idleTimeout);
-  }
+    idleTimer = setTimeout(() => send('idle'), IDLE_TIMEOUT_MS);
+  };
 
-  ['mousemove', 'keydown', 'click', 'touchstart', 'scroll'].forEach(evt =>
-    document.addEventListener(evt, resetIdleTimer, { passive: true })
+  const userEvents = ['mousemove', 'keydown', 'click', 'touchstart'];
+  if (ADD_SCROLL_EVENT) userEvents.push('scroll');
+  userEvents.forEach(evt =>
+    document.addEventListener(evt, resetIdle, { passive: true })
   );
+  resetIdle();                                         // старт
 
-  resetIdleTimer();             // старт при загрузке
-  console.log('Система мониторинга запущена');
+  /* --------------------------------------------------------------------
+   * 7. Экспортируем хелпер для явной кнопки «Выход»
+   * ------------------------------------------------------------------ */
+  window.apexAuditLogoutButton = () => send('button');  // используйте в DA/JS
+
+  DEBUG && console.log('[audit] initialised, logId =', logId);
 })();

@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# Формируем дату в переменную корректно
+DATE=$(date +%Y%m%d_%H%M%S)
+
+# Папка экспорта
+EXPORT_DIR="/home/akulich_diqpskb.ad/APEX/bi_portal/export_$DATE"
+
+# Запуск SQLcl и выполнение внутри export
+sql webrnd/your_user@your_host:1521/apexdb <<EOF
+apex export -applicationid 112 -split -dir $EXPORT_DIR
+exit
+EOF
+
+# После SQLcl — git-операции
+cd /home/akulich_diqpskb.ad/APEX/bi_portal/
+git add .
+git commit -m "Автоэкспорт APEX от $DATE"
+git push origin master

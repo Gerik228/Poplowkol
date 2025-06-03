@@ -1,19 +1,16 @@
 #!/bin/bash
 
-# Формируем дату в переменную корректно
-DATE=$(date +%Y%m%d_%H%M%S)
+EXPORT_BASE="/home//APEX/bi_portal"
+EXPORT_DIR="$EXPORT_BASE/export_$(date +%Y%m%d_%H%M%S)"
 
-# Папка экспорта
-EXPORT_DIR="/home/akulich_diqpskb.ad/APEX/bi_portal/export_$DATE"
+# Экспорт приложения
+apex export -applicationid 112 -split -dir "$EXPORT_DIR"
 
-# Запуск SQLcl и выполнение внутри export
-sql webrnd/your_user@your_host:1521/apexdb <<EOF
-apex export -applicationid 112 -split -dir $EXPORT_DIR
-exit
-EOF
+# Удаляем папки экспортов старше 7 дней с диска и из git
+find "$EXPORT_BASE" -maxdepth 1 -type d -name "export_*" -mtime +7 -exec rm -rf {} \;
+git rm -r $(find "$EXPORT_BASE" -maxdepth 1 -type d -name "export_*" -mtime +7) 2>/dev/null
 
-# После SQLcl — git-операции
-cd /home/akulich_diqpskb.ad/APEX/bi_portal/
+cd "$EXPORT_BASE"
 git add .
-git commit -m "Автоэкспорт APEX от $DATE"
+git commit -m "Автоматический экспорт APEX $(date '+%Y-%m-%d %H:%M:%S')"
 git push origin master

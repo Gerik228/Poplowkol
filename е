@@ -1,23 +1,28 @@
 declare
-  l_cookie owa_cookie.cookie;
-  l_username varchar2(100);
+  l_cookie     owa_cookie.cookie;
+  l_username   varchar2(100);
 begin
-  -- читаем куку REMEMBER_ME
-  l_cookie := owa_cookie.get('REMEMBER_ME');
+  -- Проверка: пользователь не авторизован
+  if :APP_USER = 'nobody' then
+    -- Получить куку REMEMBER_ME
+    begin
+      l_cookie := owa_cookie.get('REMEMBER_ME');
 
-  if l_cookie.num_vals > 0 then
-    l_username := l_cookie.vals(1);
+      if l_cookie.num_vals > 0 then
+        l_username := l_cookie.vals(1);
 
-    -- выполняем логин
-    apex_authentication.login(
-      p_username => l_username,
-      p_password => null
-    );
+        -- Авторизация без пароля
+        apex_authentication.login(
+          p_username => l_username,
+          p_password => null
+        );
 
-    -- редиректим на главную страницу
-    apex_util.redirect_url('f?p=&APP_ID.:1:&SESSION.::NO::'); -- Page 1
+        -- Перенаправление на главную страницу (стр. 1)
+        apex_util.redirect_url('f?p=' || :APP_ID || ':1:' || :APP_SESSION || '::NO::');
+      end if;
+    exception
+      when others then
+        null; -- Мягко игнорируем ошибку, если куки нет или она битая
+    end;
   end if;
-exception
-  when others then
-    null; -- не падаем, если что-то пошло не так
 end;

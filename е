@@ -1,0 +1,22 @@
+declare
+    l_username varchar2(100);
+begin
+    l_username := owa_util.get_cgi_env('HTTP_COOKIE');
+
+    -- Ищем REMEMBER_ME в HTTP_COOKIE
+    if l_username is not null and instr(l_username, 'REMEMBER_ME=') > 0 then
+        l_username := substr(l_username,
+            instr(l_username, 'REMEMBER_ME=') + length('REMEMBER_ME='));
+
+        -- убираем лишнее (если в куке есть другие пары)
+        if instr(l_username, ';') > 0 then
+            l_username := substr(l_username, 1, instr(l_username, ';') - 1);
+        end if;
+
+        -- вызываем логин без пароля
+        apex_authentication.login(
+            p_username => l_username,
+            p_password => null
+        );
+    end if;
+end;

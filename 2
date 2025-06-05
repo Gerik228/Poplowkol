@@ -1,34 +1,27 @@
-select
-  LOG_ID,
-  USER_NAME || ' - ' || user_fio as user_fio_login,
-  page_name,
-  case
-    when m.DEV_OR_PROD = 1 then 'dev'
-    when m.DEV_OR_PROD = 0 then 'hide'
-  end as status,
-  to_char(LOGIN_TIME, 'YYYY-MM-DD HH24:MI:SS') as log_in,
-  to_char(LOGOUT_TIME, 'YYYY-MM-DD HH24:MI:SS') as log_out,
-  round(DURATION_SEC) as duration,
-  case
-    when exists (
-      select 1
-      from apex_appl_acl_user_roles r
-      where r.user_name = l.user_name
-    ) then '1'
-    else ''
-  end as filter
-from BI_PORTAL_AUDIT_LOG l
+select 
+    l.log_id,
+    l.user_name || ' - ' || e.user_fio as user_fio_login,
+    m.page_name,
+    case 
+        when m.dev_or_prod = 1 then 'dev'
+        when m.dev_or_prod = 0 then 'hide'
+    end as status,
+    to_char(l.login_time, 'YYYY-MM-DD HH24:MI:SS') as log_in,
+    to_char(l.logout_time, 'YYYY-MM-DD HH24:MI:SS') as log_out,
+    round(l.duration_sec) as duration,
+    case 
+        when exists (
+            select 1 
+            from apex_appl_acl_user_roles r
+            where r.user_name = l.user_name
+        ) then '1'
+        else '0'
+    end as filter
+
+from bi_portal_audit_log l
 left join bi_portal_map m on m.id = l.id_dash
-left join BI_EMPL_LDAP_DEP e on e.ldap = l.user_name
-where
-  (
-    (:P_XXX_DATE_FROM is null and :P_XXX_DATE_TO is null and
-      trunc(LOGIN_TIME) = trunc(sysdate)
-    )
-    or
-    (
-      (:P_XXX_DATE_FROM is not null or :P_XXX_DATE_TO is not null) and
-      LOGIN_TIME >= nvl(:P_XXX_DATE_FROM, trunc(sysdate)) and
-      LOGIN_TIME < nvl(:P_XXX_DATE_TO + 1, trunc(sysdate) + 1)
-    )
-  )
+left join bi_empl_ldap_dep e on e.ldap = l.user_name
+
+where l.login_time between 
+      to_timestamp(coalesce(:PXX_DATE_FROM, trunc(sysdate)), 'YYYY-MM-DD')
+  and to_timestamp(coalesce(:PXX_DATE_TO, trunc(sysdate)) + 1, 'YYYY-MM-DD') - interval '1' second

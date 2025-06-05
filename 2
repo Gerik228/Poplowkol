@@ -1,3 +1,3 @@
-where login_time between 
-      to_timestamp(coalesce(:PXX_DATE_FROM, trunc(sysdate)), 'YYYY-MM-DD')
-  and to_timestamp(coalesce(:PXX_DATE_TO, trunc(sysdate)) + 1, 'YYYY-MM-DD') - interval '1' second
+where to_char(l.login_time, 'YYYY-MM-DD') between 
+      to_char(nvl(:P10054_DATE_FROM, sysdate), 'YYYY-MM-DD')
+  and to_char(nvl(:P10054_DATE_TO, sysdate), 'YYYY-MM-DD')

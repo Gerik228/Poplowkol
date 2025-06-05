@@ -1,22 +1,23 @@
 declare
-    l_username varchar2(100);
+  l_cookie owa_cookie.cookie;
+  l_username varchar2(100);
 begin
-    l_username := owa_util.get_cgi_env('HTTP_COOKIE');
+  -- читаем куку REMEMBER_ME
+  l_cookie := owa_cookie.get('REMEMBER_ME');
 
-    -- Ищем REMEMBER_ME в HTTP_COOKIE
-    if l_username is not null and instr(l_username, 'REMEMBER_ME=') > 0 then
-        l_username := substr(l_username,
-            instr(l_username, 'REMEMBER_ME=') + length('REMEMBER_ME='));
+  if l_cookie.num_vals > 0 then
+    l_username := l_cookie.vals(1);
 
-        -- убираем лишнее (если в куке есть другие пары)
-        if instr(l_username, ';') > 0 then
-            l_username := substr(l_username, 1, instr(l_username, ';') - 1);
-        end if;
+    -- выполняем логин
+    apex_authentication.login(
+      p_username => l_username,
+      p_password => null
+    );
 
-        -- вызываем логин без пароля
-        apex_authentication.login(
-            p_username => l_username,
-            p_password => null
-        );
-    end if;
+    -- редиректим на главную страницу
+    apex_util.redirect_url('f?p=&APP_ID.:1:&SESSION.::NO::'); -- Page 1
+  end if;
+exception
+  when others then
+    null; -- не падаем, если что-то пошло не так
 end;

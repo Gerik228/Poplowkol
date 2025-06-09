@@ -25,13 +25,12 @@ WITH a AS (
 
   FROM pst_esuz_issues t,
        XMLTABLE(
-         XMLNAMESPACES('http://schemas.microsoft.com/sharepoint/soap/' AS z),
-         '/z:row'
+         '/row'
          PASSING t.all_data
          COLUMNS
-           ows_priority   NUMBER       PATH '@ows_priority',
-           ows_sp         VARCHAR2(20) PATH '@ows_x0422_x0440_x0443_x0434_x0434_x004',
-           ows_developer  VARCHAR2(200) PATH '@ows_x0418_x0441_x043f_x043e_x043b'
+           ows_priority   NUMBER         PATH '@ows_priority',
+           ows_sp         VARCHAR2(20)   PATH '@ows_x0422_x0440_x0443_x0434_x0434_x004',
+           ows_developer  VARCHAR2(200)  PATH '@ows_x0418_x0441_x043f_x043e_x043b'
        ) xt
   WHERE xt.ows_priority IS NOT NULL
 )

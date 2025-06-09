@@ -1,81 +1,64 @@
-/* ====== MAIN QUERY ==================================================== */
-WITH a AS (  -- материализуем, чтобы не дублировать логику
-    SELECT /*+ MATERIALIZE */
-           t.id,
-           t.title,
-           t.div_name,
-           t.descr,
-           t.status_current,
-
-           /* № спринта из XML */
-           TO_NUMBER(
-               REGEXP_REPLACE(
-                   EXTRACTVALUE(
-                       t.all_data,
-                       '//row/@ows_priority',
-                       'xmlns="RRowsetSchema"'),
-                   '\.;$','')
-           )                                   AS sprint_num,
-
-           /* Story-point (пример, можно убрать) */
-           NVL(
-               TO_NUMBER(
-                   REGEXP_REPLACE(
-                       EXTRACTVALUE(
-                           t.all_data,
-                           '//row/@ows_x0422_x0440_x0430_x043a_x043e_x0432_x0430_x044f_x044c',
-                           'xmlns="RRowsetSchema"'),
-                       '\.;$','')
-               ),0)                            AS sp,
-
-           /* Руководитель направления */
-           NVL(
-               ( SELECT curator
-                   FROM pst_esuz_curators c
-                  WHERE c.div_name = t.div_name ),
-               t.div_name )                    AS dev_chief,
-
-           /* Исполнитель */
-           REGEXP_REPLACE(
-               EXTRACTVALUE(
-                   t.all_data,
-                   '//row/@ows_x0418_x0441_x043f_x043e_x043b_x043d_x0438_x0442_x0435_x043b',
-                   'xmlns="RRowsetSchema"'),
-               '\.;$','')                      AS developer,
-
-           /* Дата закрытия */
-           ( SELECT p.end_date
-               FROM pst_esuz_issues_timemap p
-              WHERE p.id = t.id )              AS end_date
-    FROM   pst_esuz_issues t
-    WHERE  REGEXP_REPLACE(
-              EXTRACTVALUE(
-                  t.all_data,
-                  '//row/@ows_priority',
-                  'xmlns="RRowsetSchema"'),
-              '\.;$','') IS NOT NULL
+WITH a AS (
+  SELECT 
+    id, title, div_name, descr, status_current,
+    xml_data,
+    sprint_num,
+    priority,
+    business_rus
+  FROM (
+    SELECT 
+      t.*,
+      x.sprint_num,
+      x.priority, 
+      x.business_rus
+    FROM PST_ESUZ_CURATORS t
+    CROSS APPLY XMLTABLE(
+      '//sirow'
+      PASSING t.all_data
+      COLUMNS
+        sprint_num VARCHAR2(100) PATH 'Бизнес_приоритет',
+        priority VARCHAR2(100) PATH 'Бизнес_x0420_x0443_x0441_x0440_x04',
+        business_rus VARCHAR2(100) PATH 'Бизнес_x0440_x0443_x0441'
+    ) x
+    WHERE x.sprint_num IS NOT NULL
+      AND REGEXP_REPLACE(x.sprint_num, '[^0-9]', '') IN (
+        SELECT REGEXP_SUBSTR(:P24_SPRINT, '[^:]+', 1, LEVEL) 
+        FROM DUAL 
+        CONNECT BY REGEXP_SUBSTR(:P24_SPRINT, '[^:]+', 1, LEVEL) IS NOT NULL
+      )
+  )
+),
+developers AS (
+  SELECT 
+    t.id,
+    x.developer_name,
+    i.end_date
+  FROM PST_ESUZ_CURATORS t
+  CROSS APPLY XMLTABLE(
+    '//sirow'
+    PASSING t.all_data
+    COLUMNS
+      developer_name VARCHAR2(255) PATH 'Бизнес_приоритет'
+  ) x
+  LEFT JOIN PST_ESUZ_ISSUES_TIMEWAY i ON i.id = t.id
+  WHERE x.developer_name IS NOT NULL
 )
-/* ====== DYNAMIC FILTER BLOCK ========================================= */
-SELECT *
-FROM   a
-WHERE  1 = 1
-       /* ——— Спринт: Multi Select List :P24_SPRINT ——— */
-       AND ( :P24_SPRINT IS          NULL
-             OR sprint_num IN (
-                    SELECT TO_NUMBER(column_value)
-                    FROM   TABLE(apex_string.split(:P24_SPRINT, ':'))
-           ) )
-
-       /* ——— Дев-чиф: Multi Select List :P24_DEV_CHIEF ——— */
-       AND ( :P24_DEV_CHIEF IS       NULL
-             OR dev_chief IN (
-                    SELECT column_value
-                    FROM   TABLE(apex_string.split(:P24_DEV_CHIEF, ':'))
-           ) )
-
-       /* ——— Исполнитель: Multi Select List :P24_DEVELOPER ——— */
-       AND ( :P24_DEVELOPER IS       NULL
-             OR developer IN (
-                    SELECT column_value
-                    FROM   TABLE(apex_string.split(:P24_DEVELOPER, ':'))
-           ) );
+SELECT 
+  a.id,
+  a.title,
+  a.div_name,
+  a.descr,
+  a.status_current,
+  a.sprint_num,
+  a.priority,
+  a.business_rus,
+  d.developer_name,
+  d.end_date
+FROM a
+LEFT JOIN developers d ON d.id = a.id
+WHERE a.sprint_num IN (
+  SELECT REGEXP_SUBSTR(:P24_SPRINT, '[^:]+', 1, LEVEL) 
+  FROM DUAL 
+  CONNECT BY REGEXP_SUBSTR(:P24_SPRINT, '[^:]+', 1, LEVEL) IS NOT NULL
+)
+ORDER BY a.id;

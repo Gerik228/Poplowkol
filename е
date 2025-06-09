@@ -25,7 +25,8 @@ WITH a AS (
 
   FROM pst_esuz_issues t,
        XMLTABLE(
-         '//z:row'
+         XMLNAMESPACES('http://schemas.microsoft.com/sharepoint/soap/' AS z),
+         '/z:row'
          PASSING t.all_data
          COLUMNS
            ows_priority   NUMBER       PATH '@ows_priority',

@@ -1,42 +1,23 @@
-WITH a AS (
-  SELECT
-    t.id,
-    t.title,
-    t.div_name,
-    t.descr,
-    t.status_current,
-
-    xt.ows_priority   AS sprint_num,
-    TO_NUMBER(xt.ows_sp) AS sp,
-    xt.ows_developer  AS developer,
-
-    NVL(
-      (SELECT c.curator 
-       FROM PST_ESUZ_CURATORS c 
-       WHERE c.div_name = t.div_name
-       FETCH FIRST 1 ROWS ONLY),
-      t.div_name
-    ) AS dev_chief,
-
-    (SELECT p.end_date 
-     FROM PST_ESUZ_ISSUES_TIMEWAY p 
-     WHERE p.id = t.id
-     FETCH FIRST 1 ROWS ONLY) AS end_date
-
-  FROM pst_esuz_issues t,
-       XMLTABLE(
-         '/row'
-         PASSING t.all_data
-         COLUMNS
-           ows_priority   NUMBER         PATH '@ows_priority',
-           ows_sp         VARCHAR2(20)   PATH '@ows_x0422_x0440_x0443_x0434_x0434_x004',
-           ows_developer  VARCHAR2(200)  PATH '@ows_x0418_x0441_x043f_x043e_x043b'
-       ) xt
-  WHERE xt.ows_priority IS NOT NULL
-)
-SELECT *
-FROM a
-WHERE sprint_num IN (
-  SELECT column_value 
-  FROM TABLE(apex_string.split_numbers(:P24_SPRINT, ','))
-);
+WITH A AS (
+    select 
+        id, title, div_name, descr, status_current,
+        to_number(regexp_replace(extractvalue(t.all_data, '//row/@ows_priority'),
+            'xmlns="RRowsetSchema"'), '\;.*$', '')) sprint_num,
+        nvl(to_number(regexp_replace(extractvalue(t.all_data,
+            '//row/@ows_x0422_x0440_x0430_x0436_x0434_x04'), 
+            'xmlns="RRowsetSchema"'), '\;.*$', '')), 0) sp
+    from your_table_name t
+    where (:P_SELECT_LIST is null 
+           or extractvalue(t.all_data, '//row/@ows_Title') in (
+               select trim(column_value) 
+               from table(apex_string.split(:P_SELECT_LIST, ':'))
+           ))
+),
+nvl((select curator from PST_ESUZ_CURATORS c where c.div_name = t.div_name), t.div_name) 
+as dev_chief,
+(regexp_replace(extractvalue(t.all_data, '//row/@ows_x0418_x0441_x043f_x043e_x04'),
+    'xmlns="*RRowsetSchema"'), '\;.*$', '')) as developer,
+(select p.end_date from PST_ESUZ_ISSUES_TIMEMAP p where p.id = t.id) as end_date
+from pst_esuz_issues t
+where regexp_replace(extractvalue(t.all_data, '//row/@ows_priority'),
+    'xmlns="*RRowsetSchema"'), '\;.*$', '') Is Not Null

@@ -1,23 +1,81 @@
-WITH A AS (
-    select 
-        id, title, div_name, descr, status_current,
-        to_number(regexp_replace(extractvalue(t.all_data, '//row/@ows_priority'),
-            'xmlns="RRowsetSchema"'), '\;.*$', '')) sprint_num,
-        nvl(to_number(regexp_replace(extractvalue(t.all_data,
-            '//row/@ows_x0422_x0440_x0430_x0436_x0434_x04'), 
-            'xmlns="RRowsetSchema"'), '\;.*$', '')), 0) sp
-    from your_table_name t
-    where (:P_SELECT_LIST is null 
-           or extractvalue(t.all_data, '//row/@ows_Title') in (
-               select trim(column_value) 
-               from table(apex_string.split(:P_SELECT_LIST, ':'))
-           ))
-),
-nvl((select curator from PST_ESUZ_CURATORS c where c.div_name = t.div_name), t.div_name) 
-as dev_chief,
-(regexp_replace(extractvalue(t.all_data, '//row/@ows_x0418_x0441_x043f_x043e_x04'),
-    'xmlns="*RRowsetSchema"'), '\;.*$', '')) as developer,
-(select p.end_date from PST_ESUZ_ISSUES_TIMEMAP p where p.id = t.id) as end_date
-from pst_esuz_issues t
-where regexp_replace(extractvalue(t.all_data, '//row/@ows_priority'),
-    'xmlns="*RRowsetSchema"'), '\;.*$', '') Is Not Null
+/* ====== MAIN QUERY ==================================================== */
+WITH a AS (  -- материализуем, чтобы не дублировать логику
+    SELECT /*+ MATERIALIZE */
+           t.id,
+           t.title,
+           t.div_name,
+           t.descr,
+           t.status_current,
+
+           /* № спринта из XML */
+           TO_NUMBER(
+               REGEXP_REPLACE(
+                   EXTRACTVALUE(
+                       t.all_data,
+                       '//row/@ows_priority',
+                       'xmlns="RRowsetSchema"'),
+                   '\.;$','')
+           )                                   AS sprint_num,
+
+           /* Story-point (пример, можно убрать) */
+           NVL(
+               TO_NUMBER(
+                   REGEXP_REPLACE(
+                       EXTRACTVALUE(
+                           t.all_data,
+                           '//row/@ows_x0422_x0440_x0430_x043a_x043e_x0432_x0430_x044f_x044c',
+                           'xmlns="RRowsetSchema"'),
+                       '\.;$','')
+               ),0)                            AS sp,
+
+           /* Руководитель направления */
+           NVL(
+               ( SELECT curator
+                   FROM pst_esuz_curators c
+                  WHERE c.div_name = t.div_name ),
+               t.div_name )                    AS dev_chief,
+
+           /* Исполнитель */
+           REGEXP_REPLACE(
+               EXTRACTVALUE(
+                   t.all_data,
+                   '//row/@ows_x0418_x0441_x043f_x043e_x043b_x043d_x0438_x0442_x0435_x043b',
+                   'xmlns="RRowsetSchema"'),
+               '\.;$','')                      AS developer,
+
+           /* Дата закрытия */
+           ( SELECT p.end_date
+               FROM pst_esuz_issues_timemap p
+              WHERE p.id = t.id )              AS end_date
+    FROM   pst_esuz_issues t
+    WHERE  REGEXP_REPLACE(
+              EXTRACTVALUE(
+                  t.all_data,
+                  '//row/@ows_priority',
+                  'xmlns="RRowsetSchema"'),
+              '\.;$','') IS NOT NULL
+)
+/* ====== DYNAMIC FILTER BLOCK ========================================= */
+SELECT *
+FROM   a
+WHERE  1 = 1
+       /* ——— Спринт: Multi Select List :P24_SPRINT ——— */
+       AND ( :P24_SPRINT IS          NULL
+             OR sprint_num IN (
+                    SELECT TO_NUMBER(column_value)
+                    FROM   TABLE(apex_string.split(:P24_SPRINT, ':'))
+           ) )
+
+       /* ——— Дев-чиф: Multi Select List :P24_DEV_CHIEF ——— */
+       AND ( :P24_DEV_CHIEF IS       NULL
+             OR dev_chief IN (
+                    SELECT column_value
+                    FROM   TABLE(apex_string.split(:P24_DEV_CHIEF, ':'))
+           ) )
+
+       /* ——— Исполнитель: Multi Select List :P24_DEVELOPER ——— */
+       AND ( :P24_DEVELOPER IS       NULL
+             OR developer IN (
+                    SELECT column_value
+                    FROM   TABLE(apex_string.split(:P24_DEVELOPER, ':'))
+           ) );

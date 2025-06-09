@@ -1,23 +1,49 @@
-declare
-  l_cookie owa_cookie.cookie;
-  l_username varchar2(100);
-begin
-  -- Пробуем получить куку REMEMBER_ME
-  begin
-    l_cookie := owa_cookie.get('REMEMBER_ME');
-    if l_cookie.num_vals > 0 then
-      l_username := l_cookie.vals(1);
+WITH a AS (
+  SELECT
+    t.id,
+    t.title,
+    t.div_name,
+    t.descr,
+    t.status_current,
+    
+    -- sprint_num из ows_priority
+    xt.ows_priority AS sprint_num,
 
-      -- Логиним пользователя (без пароля, доверяя куке)
-      apex_authentication.login(
-        p_username => l_username,
-        p_password => null
-      );
+    -- story points (sp)
+    to_number(xt.ows_sp) AS sp,
 
-      -- Редирект на главную страницу (допустим, стр. 1)
-      apex_util.redirect_url('f?p=' || :APP_ID || ':1:' || :APP_SESSION || '::NO::');
-    end if;
-  exception
-    when others then null;
-  end;
-end;
+    -- developer
+    xt.ows_developer AS developer,
+
+    -- dev chief
+    NVL(
+      (SELECT c.curator 
+       FROM PST_ESUZ_CURATORS c 
+       WHERE c.div_name = t.div_name
+       FETCH FIRST 1 ROWS ONLY),
+      t.div_name
+    ) AS dev_chief,
+
+    -- end_date
+    (SELECT p.end_date 
+     FROM PST_ESUZ_ISSUES_TIMEWAY p 
+     WHERE p.id = t.id
+     FETCH FIRST 1 ROWS ONLY) AS end_date
+
+  FROM pst_esuz_issues t,
+       XMLTABLE(
+         '//z:row'
+         PASSING XMLTYPE(t.all_data)
+         COLUMNS
+           ows_priority   NUMBER       PATH '@ows_priority',
+           ows_sp         VARCHAR2(20) PATH '@ows_x0422_x0440_x0443_x0434_x0344_x004',
+           ows_developer  VARCHAR2(200) PATH '@ows_x0418_x0441_x043f_x043e_x043b'
+       ) xt
+  WHERE xt.ows_priority IS NOT NULL
+)
+SELECT *
+FROM a
+WHERE sprint_num IN (
+  SELECT column_value 
+  FROM TABLE(apex_string.split_numbers(:P24_SPRINT, ','))
+);

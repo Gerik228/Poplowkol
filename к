@@ -1,0 +1,85 @@
+(function () {
+  // Конфигурация
+  const ITEM_LOG_ID = 'P1_LOG_ID';      // Скрытый элемент с ID лога
+  const ORDS_PREFIX = '/ords/web_rnd/1/x/'; // Ваш ORDS endpoint
+  const IDLE_TIMEOUT_MS = 5 * 60 * 1000;    // 5 минут бездействия
+  const ADD_SCROLL_EVENT = true;            // true — учитывать скролл как активность
+  const DEBUG = true;                       // Включить отладку
+
+  // Проверяем, что страница — модальное окно
+  if (!(apex && apex.page && apex.page.isDialog && apex.page.isDialog())) {
+    if (DEBUG) console.log('[audit] Не модальное окно — скрипт не выполняется');
+    return;
+  }
+
+  // Получаем log_id из скрытого элемента
+  const logId = $v(ITEM_LOG_ID);
+  if (!logId) {
+    if (DEBUG) console.error(`[audit] Hidden item ${ITEM_LOG_ID} не найден — скрипт остановлен`);
+    return;
+  }
+
+  // Формируем URL для логирования
+  const mkUrl = (reason) => `${ORDS_PREFIX}x/${encodeURIComponent(logId)}/reason=${reason}`;
+
+  // Общие опции для fetch
+  const commonFetch = {
+    method: 'POST',
+    body: 'logout',
+    headers: { 'Content-Type': 'text/plain' },
+    keepalive: true
+  };
+
+  // Функция отправки события логирования
+  function send(reason) {
+    const url = mkUrl(reason);
+    if (DEBUG) console.log(`[audit][modal] send '${reason}':`, url);
+
+    if (window.fetch) {
+      fetch(url, commonFetch)
+        .catch(e => DEBUG && console.error('[audit][modal] fetch:', e));
+    } else {
+      // Legacy XHR для старых браузеров
+      try {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', url, false);
+        xhr.setRequestHeader('Content-Type', 'text/plain');
+        xhr.send('logout');
+      } catch (e) {
+        DEBUG && console.error('[audit][modal] xhr:', e);
+      }
+    }
+  }
+
+  // Навигация/закрытие модального окна
+  const navExit = () => send('modal_navigation');
+  window.addEventListener('pagehide', navExit, { capture: true });
+  window.addEventListener('beforeunload', navExit, { capture: true });
+  window.addEventListener('unload', navExit, { capture: true });
+  window.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') navExit();
+  });
+
+  // Таймер бездействия пользователя
+  let idleTimer;
+  const resetIdle = () => {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => send('modal_idle'), IDLE_TIMEOUT_MS);
+  };
+
+  // События активности пользователя
+  const userEvents = ['mousemove', 'keydown', 'click', 'touchstart'];
+  if (ADD_SCROLL_EVENT) userEvents.push('scroll');
+  userEvents.forEach(evt =>
+    document.addEventListener(evt, resetIdle, { passive: true })
+  );
+  resetIdle(); // старт таймера
+
+  // Логирование открытия модального окна
+  send('modal_open');
+
+  // Экспортируем функцию для явной кнопки "Выход" (если нужно)
+  window.apexAuditLogoutButton = () => send('modal_button');
+
+  DEBUG && console.log('[audit][modal] initialised, logId =', logId);
+})();

@@ -1,105 +1,79 @@
-давай ты напишешь полную корректную инструкцию по регистрации нажатий на карточки .
-с учетом всех особенностей данной платформы. .oracle apex 23.1
-мне нужно передавать какая карточка была нажата каким пользователем
+в таблицу не записываются username, session ID page_id.
+видимо дело в JS коде который получает эти значения . 
+т.к. остальные атрибуты вставляются. .а если есть ещё одна карточка где у нее другой класс не как у других но я тоже хочу записывать данные о клике на нее . 
+изучи все особенности и придумай как решить проблему. oracle apex 23.1
 
-## Полная инструкция по регистрации нажатий на карточки в Oracle APEX 23.1
+### Проблема: Не пишутся username, sessionId, pageId — разбор и решение
 
-Ниже приведена пошаговая инструкция, оптимизированная для платформы Oracle APEX 23.1, по надёжному логированию факта нажатия пользователем на карточку в статическом контенте с учетом всех практических особенностей.
+**Причина**  
+В большинстве случаев, если часть атрибутов (например, cardId) корректно попадает в таблицу, а поля username, sessionId и pageId остаются пустыми, то проблема в JavaScript: переменные не получают реальных значений в момент клика.
 
-### 1. Структура вашей логики
+В Oracle APEX есть особенности получения этих переменных:
 
-- **Лог хранения:** отдельная таблица в БД для фиксации событий
-- **Фиксация события:** REST-модуль APEX (RESTful Web сервис)
-- **Транспорт данных:** Beacon API (гарантированная отправка даже при уходе пользователя)
-- **Инициация:** обработчик на JavaScript — передает данные о клике
+- На страницах Oracle APEX переменные APEX доступны в DOM через специальные скрытые элементы или глобальные JS-переменные.
+- Переменная $v('APP_USER') (и подобные) будут возвращать пустое значение, если их не существует на данной странице, либо если имя передано некорректно (в разных шаблонах и приложениях имена могут отличаться, либо не отрисованы).
 
-### 2. Шаг 1: Создайте таблицу логов
+### Универсальный и надёжный способ получения идентификаторов в Oracle APEX 23.1
 
-```sql
-CREATE TABLE CARD_CLICK_LOG (
-    ID         NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    USERNAME   VARCHAR2(255),
-    CLICK_TIME TIMESTAMP DEFAULT SYSTIMESTAMP,
-    CARD_ID    VARCHAR2(255),
-    SESSION_ID NUMBER,
-    PAGE_ID    NUMBER,
-    USER_AGENT VARCHAR2(512)
-);
-```
-
-### 3. Шаг 2: Настройте REST-модуль в APEX
-
-#### 3.1. Создайте REST-модуль
-
-- **Shared Components → RESTful Web Services → Modules → Create**
-- **Module Name:** card_logging
-- **Base Path:** `/card_logging/`
-- **Поставьте Published**
-
-#### 3.2. Создайте REST Resource Template
-
-- **URI Template:** `log`
-- **Priority:** 0
-- **HTTP Entity Tag Type:** None
-
-#### 3.3. Создайте Resource Handler
-
-- **HTTP Method:** POST
-- **Source Type:** PL/SQL
-- **Mime Types Allowed:** application/json (или пусто)
-- **Code для Source:**
-
-```plsql
-DECLARE
-    l_body CLOB := :body_text;
-    l_card_id VARCHAR2(255);
-    l_username VARCHAR2(255);
-    l_session_id NUMBER;
-    l_page_id NUMBER;
-    l_json_obj JSON_OBJECT_T;
-BEGIN
-    l_json_obj := JSON_OBJECT_T.parse(l_body);
-    l_card_id    := l_json_obj.get_string('cardId');
-    l_username   := l_json_obj.get_string('username');
-    l_session_id := l_json_obj.get_number('sessionId');
-    l_page_id    := l_json_obj.get_number('pageId');
-
-    INSERT INTO CARD_CLICK_LOG (
-        USERNAME, CARD_ID, SESSION_ID, PAGE_ID, USER_AGENT
-    ) VALUES (
-        l_username,
-        l_card_id,
-        l_session_id,
-        l_page_id,
-        OWA_UTIL.get_cgi_env('HTTP_USER_AGENT')
-    );
-    COMMIT;
-    :status := 204;
-END;
-```
-
-### 4. Шаг 3: Сделайте карточки с уникальным идентификатором
-
-```html
-<a href="f?p=&APP_ID.:5:&APP_SESSION." class="card-link" data-card-id="DASHBOARD">...</a>
-<a href="f?p=&APP_ID.:6:&APP_SESSION." class="card-link" data-card-id="REPORTS">...</a>
-```
-
-### 5. Шаг 4: Вставьте JavaScript для отправки события через Beacon API
-
-Добавьте код на страницу или в Shared Components → JavaScript → Function and Global Variable Declaration:
+#### 1. Используйте глобальные переменные APEX в JavaScript
 
 ```javascript
-document.querySelectorAll('.card-link').forEach(function(link){
+// Гарантированно работают внутри APEX страниц
+var username   = (typeof apex !== "undefined" && apex && apex.env && apex.env.USER) ? apex.env.USER : null;
+var sessionId  = (typeof apex !== "undefined" && apex && apex.env && apex.env.SESSION_ID) ? apex.env.SESSION_ID : null;
+var pageId     = (typeof apex !== "undefined" && apex && apex.env && apex.env.PAGE_ID) ? apex.env.PAGE_ID : null;
+```
+
+Если эти переменные не определены — пробуйте извлекать их через HTML DOM:
+
+```javascript
+function getApexHiddenValue(itemName) {
+  var el = document.querySelector('input[type=hidden][name="'+itemName+'"]');
+  return el ? el.value : null;
+}
+
+var username  = getApexHiddenValue('APP_USER');
+var sessionId = getApexHiddenValue('APP_SESSION');
+var pageId    = getApexHiddenValue('APP_PAGE_ID');
+```
+
+Если не работает — явно добавьте эти значения в скрытые элементы на каждой странице через Substitution Strings:
+
+```html
+<input type="hidden" id="APP_USER"    value="&APP_USER." />
+<input type="hidden" id="APP_SESSION" value="&APP_SESSION." />
+<input type="hidden" id="APP_PAGE_ID" value="&APP_PAGE_ID." />
+```
+
+#### 2. Обработка кликов по карточкам с разными классами
+
+Чтобы логировать клики по карточкам с любыми классами, создайте универсальный селектор. Например, дайте каждой карточке атрибут `data-logging="yes"`:
+
+```html
+<a href="..." class="card-link main"  data-card-id="one"   data-logging="yes">...</a>
+<a href="..." class="special-card"    data-card-id="two"   data-logging="yes">...</a>
+```
+
+JS:
+
+```javascript
+document.querySelectorAll('[data-logging="yes"]').forEach(function(link){
   link.addEventListener('click', function(e){
     try {
-      var cardId = link.dataset.cardId;
-      var username = $v('APP_USER');
-      var sessionId = $v('APP_SESSION');
-      var pageId = $v('APP_PAGE_ID') || $v('APP_PAGE_ID');
-      var beaconUrl = '/ords/<ВАШ_СКИМА>/card_logging/log';
+      // Получаем переменные максимально надёжно
+      var username   = (typeof apex !== "undefined" && apex && apex.env && apex.env.USER) 
+                          ? apex.env.USER 
+                          : (document.getElementById('APP_USER') ? document.getElementById('APP_USER').value : null);
+      var sessionId  = (typeof apex !== "undefined" && apex && apex.env && apex.env.SESSION_ID)
+                          ? apex.env.SESSION_ID
+                          : (document.getElementById('APP_SESSION') ? document.getElementById('APP_SESSION').value : null);
+      var pageId     = (typeof apex !== "undefined" && apex && apex.env && apex.env.PAGE_ID)
+                          ? apex.env.PAGE_ID
+                          : (document.getElementById('APP_PAGE_ID') ? document.getElementById('APP_PAGE_ID').value : null);
 
-      // Подготовим JSON с данными
+      var cardId     = link.dataset.cardId || null;
+      var beaconUrl  = '/ords/<ВАШ_СКИМА>/card_logging/log';
+
       var payload = JSON.stringify({
         cardId   : cardId,
         username : username,
@@ -107,47 +81,71 @@ document.querySelectorAll('.card-link').forEach(function(link){
         pageId   : pageId
       });
 
-      // Отправим Beacon-запрос
       navigator.sendBeacon(beaconUrl, payload);
-
-      // Можно не отменять переход, т.к. Beacon гарантирует отправку "в фоне"
-      // e.preventDefault(); // Не надо ставить!
     } catch(ex) {
-      // Для отладки
       console.error('Ошибка логирования клика:', ex);
     }
   });
 });
 ```
-**Важно!**  
-- Подставьте реальный скима в `beaconUrl` (например, `/ords/myws/card_logging/log`).
-- Не используйте `preventDefault()`, иначе переход на страницу не произойдет.
-- При необходимости используйте апекс-переменные через `$v('APP_USER')`.
 
-### 6. Шаг 5: Тест и проверка
+#### 3. Рекомендации по применению
 
-- Откройте Chrome DevTools (F12), вкладка Network.
-- Кликните по карточке — появится POST-запрос на ваш endpoint.
-- В базе (или в интерактивном отчете на таблицу логов) должны появиться новые строки с нужной информацией.
+- Используйте открытые или скрытые элементы для резервного получения переменных сессии и пользователя.
+- Не полагайтесь только на $v(), если страница — не классический APEX Interactive Page.
+- Логируйте только те элементы, которым явно добавлен data-logging="yes".
+- Для новых карточек просто добавьте `data-card-id` и `data-logging="yes"`.
 
-### 7. Возможные проблемы и их решения
+#### 4. Проверка
 
-| Проблема                             | Причина/Решение                             |
-|--------------------------------------|---------------------------------------------|
-| В базе пусто                         | Проверьте PL/SQL-код, права и таблицу       |
-| В Network нет POST на REST-URL       | Проверьте JS-код, селектор, правильный URL  |
-| Нет имени пользователя               | Переменная `$v('APP_USER')` пуста/ошибка   |
-| Код ошибки 401/403                   | Не опубликован модуль, нет доступа          |
-| Не сохраняется user_agent            | Проверьте поле, перепроверьте PL/SQL        |
+- После внесения изменений клик по любой карточке должен делать POST-запрос с корректным username, sessionId, pageId.
+- В браузере (в DevTools → Network) убедитесь, что payload не пустой.
 
-### Итог
+### Итоговый шаблон-код для Oracle APEX 23.1
 
-- Гарантированно, быстро, минимально влияет на UX.
-- Работает во всех современных браузерах.
-- Не требует сложных блокировок AJAX или дополнительных call-back-обработчиков.
-- Основа для расширения (можно фиксировать user agent, page ID, сессию, дополнительные параметры).
+```html
+<!-- В каждой карточке добавьте атрибуты -->
+<a href="..." class="main-card" data-card-id="main1" data-logging="yes">...</a>
+<a href="..." class="special-card" data-card-id="sp2" data-logging="yes">...</a>
 
-**Реализация через Beacon API — наилучшее решение для целей мониторинга поведения пользователя в APEX 23.1.**
+<!-- Добавьте скрытые элементы (если понадобится) -->
+<input type="hidden" id="APP_USER"    value="&APP_USER." />
+<input type="hidden" id="APP_SESSION" value="&APP_SESSION." />
+<input type="hidden" id="APP_PAGE_ID" value="&APP_PAGE_ID." />
+```
+
+```javascript
+document.querySelectorAll('[data-logging="yes"]').forEach(function(link){
+  link.addEventListener('click', function(e){
+    try {
+      var username =   (typeof apex !== "undefined" && apex && apex.env && apex.env.USER) 
+                        ? apex.env.USER 
+                        : (document.getElementById('APP_USER') ? document.getElementById('APP_USER').value : null);
+      var sessionId =  (typeof apex !== "undefined" && apex && apex.env && apex.env.SESSION_ID)
+                        ? apex.env.SESSION_ID
+                        : (document.getElementById('APP_SESSION') ? document.getElementById('APP_SESSION').value : null);
+      var pageId =    (typeof apex !== "undefined" && apex && apex.env && apex.env.PAGE_ID)
+                        ? apex.env.PAGE_ID
+                        : (document.getElementById('APP_PAGE_ID') ? document.getElementById('APP_PAGE_ID').value : null);
+
+      var cardId = link.dataset.cardId || null;
+      var beaconUrl = '/ords/<ВАШ_СКИМА>/card_logging/log';
+      var payload = JSON.stringify({
+        cardId   : cardId,
+        username : username,
+        sessionId: sessionId,
+        pageId   : pageId
+      });
+
+      navigator.sendBeacon(beaconUrl, payload);
+    } catch(ex) {
+      console.error('Ошибка логирования клика:', ex);
+    }
+  });
+});
+```
+
+**Этот подход — максимально универсальное решение для Oracle APEX 23.1, чтобы гарантированно логировались все нужные параметры даже при различиях в структуре страниц и карточек.**
 
 Цитаты:
 [1] 1000006968.jpg https://pplx-res.cloudinary.com/image/upload/v1752705456/user_uploads/72242679/43455e94-0dd0-4661-b073-e0349d39b83f/1000006968.jpg

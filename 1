@@ -1,0 +1,646 @@
+
+
+```sql
+-- Удаление всех процедур связанных с синхронизацией
+BEGIN
+    FOR proc IN (
+        SELECT object_name 
+        FROM user_objects 
+        WHERE object_type = 'PROCEDURE' 
+        AND (
+            object_name LIKE 'SYNC_%' OR
+            object_name LIKE '%SYNC%' OR
+            object_name LIKE 'CREATE_SMART%' OR
+            object_name LIKE 'VALIDATE_%' OR
+            object_name LIKE 'MANAGE_%'
+        )
+    ) LOOP
+        BEGIN
+            EXECUTE IMMEDIATE 'DROP PROCEDURE ' || proc.object_name;
+            DBMS_OUTPUT.PUT_LINE('Удалена процедура: ' || proc.object_name);
+        EXCEPTION
+            WHEN OTHERS THEN
+                DBMS_OUTPUT.PUT_LINE('Ошибка при удалении процедуры ' || proc.object_name || ': ' || SQLERRM);
+        END;
+    
+/
+```
+
+### 1.2 Удаление всех заданий планировщика
+
+```sql
+-- Удаление всех заданий синхронизации
+BEGIN
+    FOR job IN (
+        SELECT job_name 
+        FROM user_scheduler_jobs 
+        WHERE job_name LIKE 'SYNC_%'
+    ) LOOP
+        BEGIN
+            DBMS_SCHEDULER.DROP_JOB(job_name => job.job_name, force => TRUE);
+            DBMS_OUTPUT.PUT_LINE('Удалено задание: ' || job.job_name);
+        EXCEPTION
+            WHEN OTHERS THEN
+                DBMS_OUTPUT.PUT_LINE('Ошибка при удалении задания ' || job.job_name || ': ' || SQLERRM);
+        END;
+    END LOOP;
+END;
+/
+```
+
+### 1.3 Удаление старых таблиц синхронизации и логов
+
+```sql
+-- Удаление всех локальных backup таблиц
+BEGIN
+    FOR tab IN (
+        SELECT table_name 
+        FROM user_tables 
+        WHERE table_name LIKE 'LOCAL_%BACKUP' OR 
+              table_name LIKE 'LOCAL_%OLD' OR
+              table_name = 'SYNC_LOG'
+    ) LOOP
+        BEGIN
+            EXECUTE IMMEDIATE 'DROP TABLE ' || tab.table_name || ' CASCADE CONSTRAINTS';
+            DBMS_OUTPUT.PUT_LINE('Удалена таблица: ' || tab.table_name);
+        EXCEPTION
+            WHEN OTHERS THEN
+                DBMS_OUTPUT.PUT_LINE('Ошибка при удалении таблицы ' || tab.table_name || ': ' || SQLERRM);
+        END;
+    END LOOP;
+END;
+/
+```
+
+## Шаг 2: Создание новых объектов системы синхронизации
+
+### 2.1 Создание таблицы мониторинга
+
+```sql
+-- Создание расширенной таблицы мониторинга
+CREATE TABLE sync_log (
+    id NUMBER GENERATED ALWAYS AS IDENTITY,
+    table_name VARCHAR2(128) NOT NULL,
+    sync_date DATE NOT NULL,
+    sync_type VARCHAR2(20) NOT NULL DEFAULT 'FULL',
+    status VARCHAR2(15) NOT NULL,
+    source_row_count NUMBER DEFAULT 0,
+    target_row_count NUMBER DEFAULT 0,
+    duration_seconds NUMBER,
+    validation_result VARCHAR2(4000),
+    error_msg VARCHAR2(4000),
+    created_at TIMESTAMP DEFAULT SYSTIMESTAMP,
+    CONSTRAINT pk_sync_log PRIMARY KEY (id),
+    CONSTRAINT chk_sync_status CHECK (status IN ('SUCCESS', 'ERROR', 'WARNING', 'EMPTY_SOURCE')),
+    CONSTRAINT chk_sync_type CHECK (sync_type IN ('FULL', 'INCREMENTAL'))
+);
+
+-- Создание индексов для быстрого поиска
+CREATE INDEX idx_sync_log_table_date ON sync_log(table_name, sync_date);
+CREATE INDEX idx_sync_log_status ON sync_log(status);
+CREATE INDEX idx_sync_log_created ON sync_log(created_at);
+
+COMMENT ON TABLE sync_log IS 'Журнал синхронизации таблиц через dblink';
+```
+
+### 2.2 Процедура комплексной проверки окружения
+
+```sql
+CREATE OR REPLACE PROCEDURE validate_sync_environment(
+    p_table_name VARCHAR2,
+    p_dblink_name VARCHAR2,
+    p_validation_result OUT VARCHAR2,
+    p_source_count OUT NUMBER,
+    p_is_valid OUT BOOLEAN
+) IS
+    v_count NUMBER;
+    v_dblink_valid BOOLEAN := FALSE;
+    v_table_exists NUMBER := 0;
+    v_structure_check VARCHAR2(4000);
+    v_full_table_name VARCHAR2(256);
+    v_source_schema VARCHAR2(128);
+    v_base_table_name VARCHAR2(128);
+BEGIN
+    p_is_valid := FALSE;
+    p_validation_result := '';
+    p_source_count := 0;
+    
+    -- Парсинг имени таблицы
+    v_full_table_name := UPPER(TRIM(p_table_name));
+    IF INSTR(v_full_table_name, '.') > 0 THEN
+        v_source_schema := REGEXP_SUBSTR(v_full_table_name, '^[^.]+');
+        v_base_table_name := REGEXP_SUBSTR(v_full_table_name, '[^.]+$');
+    ELSE
+        v_source_schema := NULL;
+        v_base_table_name := v_full_table_name;
+    END IF;
+    
+    -- Формируем полное имя для запроса
+    IF v_source_schema IS NOT NULL THEN
+        v_full_table_name := v_source_schema || '.' || v_base_table_name;
+    ELSE
+        v_full_table_name := v_base_table_name;
+    END IF;
+    
+    -- 1. Проверка доступности dblink
+    BEGIN
+        EXECUTE IMMEDIATE 'SELECT COUNT(*) FROM dual@' || p_dblink_name INTO v_count;
+        v_dblink_valid := TRUE;
+        p_validation_result := p_validation_result || 'DBLINK_OK; ';
+    EXCEPTION
+        WHEN OTHERS THEN
+            p_validation_result := p_validation_result || 'DBLINK_ERROR: ' || SQLERRM || '; ';
+            RETURN;
+    END;
+    
+    -- 2. Проверка существования удаленной таблицы
+    BEGIN
+        EXECUTE IMMEDIATE 'SELECT COUNT(*) FROM ' || v_full_table_name || '@' || p_dblink_name || ' WHERE ROWNUM = 1' INTO v_table_exists;
+        p_validation_result := p_validation_result || 'TABLE_EXISTS; ';
+    EXCEPTION
+        WHEN OTHERS THEN
+            IF SQLCODE = -942 THEN
+                p_validation_result := p_validation_result || 'TABLE_NOT_EXISTS; ';
+            ELSE
+                p_validation_result := p_validation_result || 'TABLE_ACCESS_ERROR: ' || SQLERRM || '; ';
+            END IF;
+            RETURN;
+    END;
+    
+    -- 3. Подсчет количества записей в источнике
+    BEGIN
+        EXECUTE IMMEDIATE 'SELECT COUNT(*) FROM ' || v_full_table_name || '@' || p_dblink_name INTO p_source_count;
+        p_validation_result := p_validation_result || 'SOURCE_COUNT: ' || p_source_count || '; ';
+    EXCEPTION
+        WHEN OTHERS THEN
+            p_validation_result := p_validation_result || 'COUNT_ERROR: ' || SQLERRM || '; ';
+            RETURN;
+    END;
+    
+    -- 4. Базовая проверка структуры (опционально)
+    BEGIN
+        EXECUTE IMMEDIATE 'SELECT column_name FROM user_tab_columns@' || p_dblink_name || 
+                         ' WHERE table_name = ''' || UPPER(v_base_table_name) || ''' AND ROWNUM = 1' INTO v_structure_check;
+        p_validation_result := p_validation_result || 'STRUCTURE_OK; ';
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            p_validation_result := p_validation_result || 'NO_COLUMNS_INFO; ';
+        WHEN OTHERS THEN
+            p_validation_result := p_validation_result || 'STRUCTURE_CHECK_SKIP; ';
+    END;
+    
+    -- Финальная оценка
+    IF v_dblink_valid AND v_table_exists >= 0 THEN
+        p_is_valid := TRUE;
+        p_validation_result := p_validation_result || 'VALIDATION_PASSED';
+    END IF;
+    
+EXCEPTION
+    WHEN OTHERS THEN
+        p_validation_result := 'VALIDATION_FATAL_ERROR: ' || SQLERRM;
+        p_is_valid := FALSE;
+END validate_sync_environment;
+/
+```
+
+### 2.3 Основная процедура синхронизации
+
+```sql
+CREATE OR REPLACE PROCEDURE sync_single_table_advanced(
+    p_table_name VARCHAR2,
+    p_dblink_name VARCHAR2,
+    p_sync_type VARCHAR2 DEFAULT 'FULL',
+    p_min_row_threshold NUMBER DEFAULT 0
+) IS
+    -- Переменные для парсинга имени таблицы
+    v_full_table_name VARCHAR2(256);
+    v_source_schema VARCHAR2(128);
+    v_base_table_name VARCHAR2(128);
+    v_select_from VARCHAR2(512);
+    
+    -- Переменные для локальных имен
+    v_local_table_name VARCHAR2(128);
+    v_backup_table_name VARCHAR2(128);
+    
+    -- Служебные переменные
+    v_ddl_statement VARCHAR2(4000);
+    v_error_msg VARCHAR2(4000);
+    v_start_time TIMESTAMP;
+    v_end_time TIMESTAMP;
+    v_source_count NUMBER := 0;
+    v_target_count NUMBER := 0;
+    v_validation_result VARCHAR2(4000);
+    v_is_environment_valid BOOLEAN;
+    v_sync_status VARCHAR2(15) := 'ERROR';
+    v_should_proceed BOOLEAN := FALSE;
+BEGIN
+    v_start_time := SYSTIMESTAMP;
+    
+    -- Парсинг входного параметра
+    v_full_table_name := UPPER(TRIM(p_table_name));
+    IF INSTR(v_full_table_name, '.') > 0 THEN
+        v_source_schema := REGEXP_SUBSTR(v_full_table_name, '^[^.]+');
+        v_base_table_name := REGEXP_SUBSTR(v_full_table_name, '[^.]+$');
+    ELSE
+        v_source_schema := NULL;
+        v_base_table_name := v_full_table_name;
+    END IF;
+    
+    -- Формируем имена локальных таблиц (всегда без схемы)
+    v_local_table_name := 'LOCAL_' || v_base_table_name || '_BACKUP';
+    v_backup_table_name := 'LOCAL_' || v_base_table_name || '_OLD';
+    
+    -- Формируем FROM-часть для запросов через dblink
+    IF v_source_schema IS NOT NULL THEN
+        v_select_from := v_source_schema || '.' || v_base_table_name || '@' || p_dblink_name;
+    ELSE
+        v_select_from := v_base_table_name || '@' || p_dblink_name;
+    END IF;
+    
+    -- Всесторонняя проверка окружения
+    validate_sync_environment(
+        p_table_name => p_table_name,
+        p_dblink_name => p_dblink_name,
+        p_validation_result => v_validation_result,
+        p_source_count => v_source_count,
+        p_is_valid => v_is_environment_valid
+    );
+    
+    -- Принятие решения о продолжении синхронизации
+    IF NOT v_is_environment_valid THEN
+        v_sync_status := 'ERROR';
+        v_error_msg := 'Environment validation failed: ' || v_validation_result;
+    ELSIF v_source_count < p_min_row_threshold THEN
+        v_sync_status := 'EMPTY_SOURCE';
+        v_error_msg := 'Source table has insufficient data (' || v_source_count || ' rows, threshold: ' || p_min_row_threshold || ')';
+    ELSE
+        v_should_proceed := TRUE;
+    END IF;
+    
+    -- Выполнение синхронизации при прохождении всех проверок
+    IF v_should_proceed THEN
+        BEGIN
+            -- Создание резервной копии существующей таблицы
+            BEGIN
+                EXECUTE IMMEDIATE 'ALTER TABLE ' || v_local_table_name || 
+                                 ' RENAME TO ' || v_backup_table_name;
+            EXCEPTION
+                WHEN OTHERS THEN 
+                    DBMS_OUTPUT.PUT_LINE('Предыдущая версия таблицы отсутствует - создаем новую');
+            END;
+            
+            -- Создание новой таблицы
+            v_ddl_statement := 'CREATE TABLE ' || v_local_table_name || 
+                              ' AS SELECT * FROM ' || v_select_from;
+            
+            EXECUTE IMMEDIATE v_ddl_statement;
+            
+            -- Подсчет результата
+            EXECUTE IMMEDIATE 'SELECT COUNT(*) FROM ' || v_local_table_name INTO v_target_count;
+            
+            -- Валидация результата
+            IF v_target_count = v_source_count THEN
+                v_sync_status := 'SUCCESS';
+                
+                -- Удаление старой резервной копии
+                BEGIN
+                    EXECUTE IMMEDIATE 'DROP TABLE ' || v_backup_table_name;
+                EXCEPTION
+                    WHEN OTHERS THEN NULL;
+                END;
+                
+                -- Обновление статистики
+                BEGIN
+                    DBMS_STATS.GATHER_TABLE_STATS(USER, v_local_table_name);
+                EXCEPTION
+                    WHEN OTHERS THEN NULL;
+                END;
+                
+            ELSE
+                v_sync_status := 'WARNING';
+                v_error_msg := 'Row count mismatch: source=' || v_source_count || ', target=' || v_target_count;
+            END IF;
+            
+        EXCEPTION
+            WHEN OTHERS THEN
+                v_error_msg := SQLERRM;
+                v_sync_status := 'ERROR';
+                
+                -- Восстановление предыдущей версии при ошибке
+                BEGIN
+                    EXECUTE IMMEDIATE 'DROP TABLE ' || v_local_table_name;
+                EXCEPTION
+                    WHEN OTHERS THEN NULL;
+                END;
+                
+                BEGIN
+                    EXECUTE IMMEDIATE 'ALTER TABLE ' || v_backup_table_name || 
+                                     ' RENAME TO ' || v_local_table_name;
+                    DBMS_OUTPUT.PUT_LINE('Восстановлена предыдущая версия таблицы');
+                EXCEPTION
+                    WHEN OTHERS THEN NULL;
+                END;
+        END;
+    END IF;
+    
+    -- Логирование результата
+    v_end_time := SYSTIMESTAMP;
+    INSERT INTO sync_log (
+        table_name, sync_date, sync_type, status, 
+        source_row_count, target_row_count, duration_seconds,
+        validation_result, error_msg
+    ) VALUES (
+        p_table_name, SYSDATE, p_sync_type, v_sync_status,
+        v_source_count, v_target_count, 
+        EXTRACT(SECOND FROM (v_end_time - v_start_time)),
+        v_validation_result, v_error_msg
+    );
+    COMMIT;
+    
+    -- Информативный вывод
+    DBMS_OUTPUT.PUT_LINE('=== ОТЧЕТ СИНХРОНИЗАЦИИ ДЛЯ ' || p_table_name || ' ===');
+    DBMS_OUTPUT.PUT_LINE('Статус: ' || v_sync_status);
+    DBMS_OUTPUT.PUT_LINE('Строк в источнике: ' || v_source_count);
+    DBMS_OUTPUT.PUT_LINE('Строк в локальной копии: ' || v_target_count);
+    DBMS_OUTPUT.PUT_LINE('Локальная таблица: ' || v_local_table_name);
+    DBMS_OUTPUT.PUT_LINE('Валидация: ' || v_validation_result);
+    IF v_error_msg IS NOT NULL THEN
+        DBMS_OUTPUT.PUT_LINE('Ошибка: ' || v_error_msg);
+    END IF;
+    
+END sync_single_table_advanced;
+/
+```
+
+### 2.4 Процедура создания заданий планировщика
+
+```sql
+CREATE OR REPLACE PROCEDURE create_smart_sync_job(
+    p_table_name VARCHAR2,
+    p_schedule_interval VARCHAR2 DEFAULT 'FREQ=DAILY;BYHOUR=20',
+    p_dblink_name VARCHAR2,
+    p_sync_type VARCHAR2 DEFAULT 'FULL',
+    p_min_row_threshold NUMBER DEFAULT 1,
+    p_test_run BOOLEAN DEFAULT TRUE
+) IS
+    v_job_name VARCHAR2(128);
+    v_test_result VARCHAR2(4000);
+    v_source_count NUMBER;
+    v_is_valid BOOLEAN;
+    v_base_table_name VARCHAR2(128);
+BEGIN
+    -- Извлекаем базовое имя таблицы для job_name
+    IF INSTR(p_table_name, '.') > 0 THEN
+        v_base_table_name := REGEXP_SUBSTR(UPPER(TRIM(p_table_name)), '[^.]+$');
+    ELSE
+        v_base_table_name := UPPER(TRIM(p_table_name));
+    END IF;
+    
+    v_job_name := 'SYNC_' || v_base_table_name || '_JOB';
+    
+    -- Обязательный тестовый запуск
+    IF p_test_run THEN
+        DBMS_OUTPUT.PUT_LINE('=== ВЫПОЛНЕНИЕ ТЕСТОВОГО ЗАПУСКА ===');
+        validate_sync_environment(
+            p_table_name => p_table_name,
+            p_dblink_name => p_dblink_name,
+            p_validation_result => v_test_result,
+            p_source_count => v_source_count,
+            p_is_valid => v_is_valid
+        );
+        
+        DBMS_OUTPUT.PUT_LINE('Результат тестовой валидации: ' || v_test_result);
+        
+        IF NOT v_is_valid THEN
+            RAISE_APPLICATION_ERROR(-20001, 'Тестовая валидация не пройдена: ' || v_test_result);
+        END IF;
+        
+        IF v_source_count < p_min_row_threshold THEN
+            RAISE_APPLICATION_ERROR(-20002, 'В исходной таблице недостаточно данных (' || 
+                v_source_count || ' строк, минимум требуется: ' || p_min_row_threshold || ')');
+        END IF;
+        
+        DBMS_OUTPUT.PUT_LINE('Тестирование прошло успешно. Найдено строк: ' || v_source_count);
+    END IF;
+    
+    -- Удаление существующего задания
+    BEGIN
+        DBMS_SCHEDULER.DROP_JOB(job_name => v_job_name, force => TRUE);
+        DBMS_OUTPUT.PUT_LINE('Удалено существующее задание: ' || v_job_name);
+    EXCEPTION
+        WHEN OTHERS THEN 
+            DBMS_OUTPUT.PUT_LINE('Предыдущего задания не найдено');
+    END;
+    
+    -- Создание нового задания
+    DBMS_SCHEDULER.CREATE_JOB(
+        job_name        => v_job_name,
+        job_type        => 'PLSQL_BLOCK',
+        job_action      => 'BEGIN sync_single_table_advanced(''' || p_table_name || ''', ''' || 
+                          p_dblink_name || ''', ''' || p_sync_type || ''', ' || 
+                          p_min_row_threshold || '); END;',
+        start_date      => SYSTIMESTAMP + INTERVAL '5' MINUTE,
+        repeat_interval => p_schedule_interval,
+        enabled         => TRUE,
+        comments        => 'Автоматическая синхронизация таблицы ' || p_table_name || ' (тип: ' || p_sync_type || ')'
+    );
+    
+    DBMS_OUTPUT.PUT_LINE('=== ЗАДАНИЕ СОЗДАНО УСПЕШНО ===');
+    DBMS_OUTPUT.PUT_LINE('Имя задания: ' || v_job_name);
+    DBMS_OUTPUT.PUT_LINE('Расписание: ' || p_schedule_interval);
+    DBMS_OUTPUT.PUT_LINE('Тип синхронизации: ' || p_sync_type);
+    DBMS_OUTPUT.PUT_LINE('Минимальный порог строк: ' || p_min_row_threshold);
+    DBMS_OUTPUT.PUT_LINE('Первый запуск: через 5 минут');
+    
+END create_smart_sync_job;
+/
+```
+
+### 2.5 Представление для мониторинга
+
+```sql
+CREATE OR REPLACE VIEW v_sync_dashboard AS
+SELECT 
+    table_name,
+    sync_type,
+    status,
+    sync_date,
+    source_row_count,
+    target_row_count,
+    ROUND(duration_seconds, 2) as duration_sec,
+    CASE 
+        WHEN status = 'SUCCESS' AND sync_date > SYSDATE - 1 THEN 'HEALTHY'
+        WHEN status = 'EMPTY_SOURCE' THEN 'EMPTY_SOURCE'
+        WHEN status = 'WARNING' THEN 'WARNING'
+        WHEN sync_date < SYSDATE - 2 THEN 'OUTDATED'
+        ELSE 'ERROR'
+    END as health_status,
+    SUBSTR(validation_result, 1, 100) as validation_short,
+    SUBSTR(error_msg, 1, 200) as error_short,
+    created_at
+FROM (
+    SELECT *,
+           ROW_NUMBER() OVER (PARTITION BY table_name ORDER BY sync_date DESC) as rn
+    FROM sync_log
+) WHERE rn = 1
+ORDER BY 
+    CASE health_status 
+        WHEN 'ERROR' THEN 1 
+        WHEN 'WARNING' THEN 2 
+        WHEN 'OUTDATED' THEN 3 
+        WHEN 'EMPTY_SOURCE' THEN 4 
+        ELSE 5 
+    END,
+    sync_date DESC;
+
+COMMENT ON VIEW v_sync_dashboard IS 'Панель мониторинга синхронизации таблиц';
+```
+
+### 2.6 Процедура управления заданиями
+
+```sql
+CREATE OR REPLACE PROCEDURE manage_sync_jobs(
+    p_action VARCHAR2, -- 'ENABLE', 'DISABLE', 'DROP', 'STATUS'
+    p_table_name VARCHAR2 DEFAULT NULL -- NULL = все задания
+) IS
+    v_job_pattern VARCHAR2(128);
+    v_count NUMBER := 0;
+BEGIN
+    -- Определяем паттерн поиска заданий
+    IF p_table_name IS NOT NULL THEN
+        -- Извлекаем базовое имя таблицы
+        IF INSTR(p_table_name, '.') > 0 THEN
+            v_job_pattern := 'SYNC_' || REGEXP_SUBSTR(UPPER(TRIM(p_table_name)), '[^.]+$') || '_JOB';
+        ELSE
+            v_job_pattern := 'SYNC_' || UPPER(TRIM(p_table_name)) || '_JOB';
+        END IF;
+    END IF;
+    
+    DBMS_OUTPUT.PUT_LINE('=== УПРАВЛЕНИЕ ЗАДАНИЯМИ СИНХРОНИЗАЦИИ ===');
+    DBMS_OUTPUT.PUT_LINE('Действие: ' || UPPER(p_action));
+    IF p_table_name IS NOT NULL THEN
+        DBMS_OUTPUT.PUT_LINE('Таблица: ' || p_table_name);
+    ELSE
+        DBMS_OUTPUT.PUT_LINE('Область: все задания синхронизации');
+    END IF;
+    DBMS_OUTPUT.PUT_LINE('');
+    
+    FOR job_rec IN (
+        SELECT job_name, enabled, state
+        FROM user_scheduler_jobs 
+        WHERE job_name LIKE 'SYNC_%_JOB'
+        AND (p_table_name IS NULL OR job_name = v_job_pattern)
+        ORDER BY job_name
+    ) LOOP
+        v_count := v_count + 1;
+        
+        CASE UPPER(p_action)
+            WHEN 'ENABLE' THEN
+                BEGIN
+                    DBMS_SCHEDULER.ENABLE(job_rec.job_name);
+                    DBMS_OUTPUT.PUT_LINE('✓ Включено: ' || job_rec.job_name);
+                EXCEPTION
+                    WHEN OTHERS THEN
+                        DBMS_OUTPUT.PUT_LINE('✗ Ошибка включения ' || job_rec.job_name || ': ' || SQLERRM);
+                END;
+                
+            WHEN 'DISABLE' THEN
+                BEGIN
+                    DBMS_SCHEDULER.DISABLE(job_rec.job_name);
+                    DBMS_OUTPUT.PUT_LINE('✓ Отключено: ' || job_rec.job_name);
+                EXCEPTION
+                    WHEN OTHERS THEN
+                        DBMS_OUTPUT.PUT_LINE('✗ Ошибка отключения ' || job_rec.job_name || ': ' || SQLERRM);
+                END;
+                
+            WHEN 'DROP' THEN
+                BEGIN
+                    DBMS_SCHEDULER.DROP_JOB(job_rec.job_name, force => TRUE);
+                    DBMS_OUTPUT.PUT_LINE('✓ Удалено: ' || job_rec.job_name);
+                EXCEPTION
+                    WHEN OTHERS THEN
+                        DBMS_OUTPUT.PUT_LINE('✗ Ошибка удаления ' || job_rec.job_name || ': ' || SQLERRM);
+                END;
+                
+            WHEN 'STATUS' THEN
+                DBMS_OUTPUT.PUT_LINE('📋 ' || job_rec.job_name || 
+                    ' | Включено: ' || job_rec.enabled || 
+                    ' | Состояние: ' || NVL(job_rec.state, 'N/A'));
+            ELSE
+                DBMS_OUTPUT.PUT_LINE('❌ Неизвестное действие: ' || p_action);
+        END CASE;
+    END LOOP;
+    
+    IF v_count = 0 THEN
+        DBMS_OUTPUT.PUT_LINE('Задания не найдены');
+    ELSE
+        DBMS_OUTPUT.PUT_LINE('');
+        DBMS_OUTPUT.PUT_LINE('Обработано заданий: ' || v_count);
+    END IF;
+    
+END manage_sync_jobs;
+/
+```
+
+## Шаг 3: Примеры использования
+
+### 3.1 Создание задания синхронизации
+
+```sql
+-- Включаем вывод сообщений
+SET SERVEROUTPUT ON;
+
+-- Создание задания для синхронизации (замените YOUR_SCHEMA.YOUR_TABLE и YOUR_DBLINK на ваши значения)
+BEGIN
+    create_smart_sync_job(
+        p_table_name        => 'YOUR_SCHEMA.YOUR_TABLE',    -- Замените на ваше
+        p_schedule_interval => 'FREQ=DAILY;BYHOUR=20',      -- Каждый день в 20:00
+        p_dblink_name       => 'YOUR_DBLINK',               -- Замените на ваш dblink  
+        p_sync_type         => 'FULL',                      -- Полное копирование
+        p_min_row_threshold => 1,                           -- Минимум 1 строка
+        p_test_run          => TRUE                         -- С тестированием
+    );
+END;
+/
+```
+
+### 3.2 Ручная синхронизация
+
+```sql
+-- Ручной запуск синхронизации для проверки
+BEGIN
+    sync_single_table_advanced(
+        p_table_name      => 'YOUR_SCHEMA.YOUR_TABLE',
+        p_dblink_name     => 'YOUR_DBLINK',
+        p_sync_type       => 'FULL',
+        p_min_row_threshold => 1
+    );
+END;
+/
+```
+
+### 3.3 Мониторинг системы
+
+```sql
+-- Просмотр статуса всех синхронизаций
+SELECT * FROM v_sync_dashboard;
+
+-- Просмотр всех заданий планировщика
+BEGIN
+    manage_sync_jobs('STATUS');
+END;
+/
+
+-- Просмотр последних записей лога
+SELECT 
+    table_name,
+    status,
+    sync_date,
+    source_row_count,
+    target_row_count,
+    SUBSTR(error_msg, 1, 100) as error_summary
+FROM sync_log 
+WHERE sync_date > SYSDATE - 7 
+ORDER BY sync_date DESC;
+```
+

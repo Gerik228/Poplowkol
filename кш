@@ -1,5 +1,106 @@
 
+
+### 1. Основная процедура синхронизации (исправленная версия)
+
 ```sql
+-- Создание процедуры для синхронизации одной таблицы
+CREATE OR REPLACE PROCEDURE sync_single_table(
+    p_table_name VARCHAR2,
+    p_dblink_name VARCHAR2
+) IS
+    v_local_table_name VARCHAR2(128);
+    v_backup_table_name VARCHAR2(128);
+    v_ddl_statement VARCHAR2(4000);
+    v_error_msg VARCHAR2(4000);
+    v_start_time TIMESTAMP;
+    v_end_time TIMESTAMP;
+    v_row_count NUMBER;
+BEGIN
+    v_start_time := SYSTIMESTAMP;
+    v_local_table_name := 'LOCAL_' || p_table_name || '_BACKUP';
+    v_backup_table_name := 'LOCAL_' || p_table_name || '_OLD';
+    
+    -- Создесли существует)
+    BEGIN
+        EXECUTE IMMEDIATE 'ALTER TABLE ' || v_local_table_name || 
+                         ' RENAME TO ' || v_backup_table_name;
+    EXCEPTION
+        WHEN OTHERS THEN 
+            NULL; -- Таблица не существует - это нормально
+    END;
+    
+    -- Создаем новую таблицу из удаленного источника
+    v_ddl_statement := 'CREATE TABLE ' || v_local_table_name || 
+                      ' AS SELECT * FROM ' || p_table_name || '@' || p_dblink_name;
+    
+    BEGIN
+        EXECUTE IMMEDIATE v_ddl_statement;
+        
+        -- Подсчитываем количество строк
+        EXECUTE IMMEDIATE 'SELECT COUNT(*) FROM ' || v_local_table_name 
+                         INTO v_row_count;
+        
+        -- Удаляем старую backup таблицу
+        BEGIN
+            EXECUTE IMMEDIATE 'DROP TABLE ' || v_backup_table_name;
+        EXCEPTION
+            WHEN OTHERS THEN 
+                NULL; -- Не критично если не удалось удалить
+        END;
+        
+        -- Обновляем статистику
+        DBMS_STATS.GATHER_TABLE_STATS(USER, v_local_table_name);
+        
+        v_end_time := SYSTIMESTAMP;
+        
+        -- Логируем успешное выполнение
+        INSERT INTO sync_log (
+            table_name, sync_date, status, row_count, 
+            duration_seconds, error_msg
+        ) VALUES (
+            p_table_name, SYSDATE, 'SUCCESS', v_row_count,
+            EXTRACT(SECOND FROM (v_end_time - v_start_time)), NULL
+        );
+        COMMIT;
+        
+        DBMS_OUTPUT.PUT_LINE('Таблица ' || p_table_name || ' синхронизирована успешно. Строк: ' || v_row_count);
+        
+    EXCEPTION
+        WHEN OTHERS THEN
+            v_error_msg := SQLERRM;
+            v_end_time := SYSTIMESTAMP;
+            
+            -- Восстанавливаем старую таблицу если возможно
+            BEGIN
+                EXECUTE IMMEDIATE 'ALTER TABLE ' || v_backup_table_name || 
+                                 ' RENAME TO ' || v_local_table_name;
+                DBMS_OUTPUT.PUT_LINE('Восстановлена предыдущая версия таблицы ' || p_table_name);
+            EXCEPTION
+                WHEN OTHERS THEN 
+                    NULL; -- Старой таблицы не было
+            END;
+            
+            -- Логируем ошибку
+            INSERT INTO sync_log (
+                table_name, sync_date, status, row_count,
+                duration_seconds, error_msg
+            ) VALUES (
+                p_table_name, SYSDATE, 'ERROR', 0,
+                EXTRACT(SECOND FROM (v_end_time - v_start_time)), v_error_msg
+            );
+            COMMIT;
+            
+            DBMS_OUTPUT.PUT_LINE('Ошибка синхронизации таблицы ' || p_table_name || ': ' || v_error_msg);
+            -- Не используем RAISE, чтобы не останавливать выполнение других таблиц
+    END;
+END sync_single_table;
+/
+```
+
+### 2. Процедура с параметрами (исправленная версия)
+
+```sql
+-- Создание процедуры для настройки синхронизации таблицы
 CREATE OR REPLACE PROCEDURE sync_table_with_params(
     p_table_name VARCHAR2,
     p_schedule_interval VARCHAR2 DEFAULT 'FREQ=DAILY;BYHOUR=20',
@@ -8,9 +109,9 @@ CREATE OR REPLACE PROCEDURE sync_table_with_params(
 ) IS
     v_job_name VARCHAR2(128);
     v_local_table_name VARCHAR2(128);
-    v_ddl_statement VARCHAR2(4000);
     v_job_exists NUMBER;
-    v_error_msg
+    v_error_msg VARCHAR2(4000);
+BEGIN
     -- Формируем имена
     v_local_table_name := 'LOCAL_' || p_table_name || '_BACKUP';
     v_job_name := 'SYNC_' || p_table_name || '_JOB';
@@ -46,103 +147,15 @@ EXCEPTION
     WHEN OTHERS THEN
         v_error_msg := SQLERRM;
         DBMS_OUTPUT.PUT_LINE('Ошибка при создании задания: ' || v_error_msg);
-        RAISE;
+        RAISE; -- В данном случае останавливаем выполнение
 END sync_table_with_params;
 /
 ```
 
-### 2. Вспомогательная процедура для синхронизации
+### 3. Таблица для мониторинга (создать перед процедурами)
 
 ```sql
-CREATE OR REPLACE PROCEDURE sync_single_table(
-    p_table_name VARCHAR2,
-    p_dblink_name VARCHAR2
-) IS
-    v_local_table_name VARCHAR2(128);
-    v_backup_table_name VARCHAR2(128);
-    v_ddl_statement VARCHAR2(4000);
-    v_error_msg VARCHAR2(4000);
-    v_start_time TIMESTAMP;
-    v_end_time TIMESTAMP;
-    v_row_count NUMBER;
-BEGIN
-    v_start_time := SYSTIMESTAMP;
-    v_local_table_name := 'LOCAL_' || p_table_name || '_BACKUP';
-    v_backup_table_name := 'LOCAL_' || p_table_name || '_OLD';
-    
-    -- Создаем backup старой таблицы (если существует)
-    BEGIN
-        EXECUTE IMMEDIATE 'ALTER TABLE ' || v_local_table_name || 
-                         ' RENAME TO ' || v_backup_table_name;
-    EXCEPTION
-        WHEN OTHERS THEN NULL; -- Таблица не существует
-    END;
-    
-    -- Создаем новую таблицу из удаленного источника
-    v_ddl_statement := 'CREATE TABLE ' || v_local_table_name || 
-                      ' AS SELECT * FROM ' || p_table_name || '@' || p_dblink_name;
-    
-    BEGIN
-        EXECUTE IMMEDIATE v_ddl_statement;
-        
-        -- Подсчитываем количество строк
-        EXECUTE IMMEDIATE 'SELECT COUNT(*) FROM ' || v_local_table_name 
-                         INTO v_row_count;
-        
-        -- Удаляем старую backup таблицу
-        BEGIN
-            EXECUTE IMMEDIATE 'DROP TABLE ' || v_backup_table_name;
-        EXCEPTION
-            WHEN OTHERS THEN NULL;
-        END;
-        
-        -- Обновляем статистику
-        DBMS_STATS.GATHER_TABLE_STATS(USER, v_local_table_name);
-        
-        v_end_time := SYSTIMESTAMP;
-        
-        -- Логируем успешное выполнение
-        INSERT INTO sync_log (
-            table_name, sync_date, status, row_count, 
-            duration_seconds, error_msg
-        ) VALUES (
-            p_table_name, SYSDATE, 'SUCCESS', v_row_count,
-            EXTRACT(SECOND FROM (v_end_time - v_start_time)), NULL
-        );
-        COMMIT;
-        
-    EXCEPTION
-        WHEN OTHERS THEN
-            v_error_msg := SQLERRM;
-            v_end_time := SYSTIMESTAMP;
-            
-            -- Восстанавливаем старую таблицу если возможно
-            BEGIN
-                EXECUTE IMMEDIATE 'ALTER TABLE ' || v_backup_table_name || 
-                                 ' RENAME TO ' || v_local_table_name;
-            EXCEPTION
-                WHEN OTHERS THEN NULL;
-            END;
-            
-            -- Логируем ошибку
-            INSERT INTO sync_log (
-                table_name, sync_date, status, row_count,
-                duration_seconds, error_msg
-            ) VALUES (
-                p_table_name, SYSDATE, 'ERROR', 0,
-                EXTRACT(SECOND FROM (v_end_time - v_start_time)), v_error_msg
-            );
-            COMMIT;
-            
-            RAISE;
-    END;
-END sync_single_table;
-/
-```
-
-### 3. Расширенная таблица для мониторинга
-
-```sql
+-- Создание таблицы для мониторинга синхронизации
 CREATE TABLE sync_log (
     id NUMBER GENERATED ALWAYS AS IDENTITY,
     table_name VARCHAR2(128) NOT NULL,
@@ -161,190 +174,165 @@ CREATE INDEX idx_sync_log_table_date ON sync_log(table_name, sync_date);
 CREATE INDEX idx_sync_log_status ON sync_log(status);
 ```
 
-### 4. Простая процедура для массового создания заданий
+## Упрощенная версия для начального тестирования
+
+Если возникают проблемы с основным кодом, используйте эту упрощенную версию:
 
 ```sql
-CREATE OR REPLACE PROCEDURE create_multiple_sync_jobs(
-    p_tables_list VARCHAR2, -- Список таблиц через запятую
-    p_schedule VARCHAR2 DEFAULT 'FREQ=DAILY;BYHOUR=20',
-    p_dblink VARCHAR2 DEFAULT 'your_dblink'
-) IS
-    v_table_name VARCHAR2(128);
-    v_pos NUMBER := 1;
-    v_next_pos NUMBER;
+-- Простая процедура для тестирования
+CREATE OR REPLACE PROCEDURE test_sync_table(
+    p_table_name VARCHAR2,
+    p_dblink_name VARCHAR2 DEFAULT 'your_dblink'
+) 
+IS
+    v_sql VARCHAR2(4000);
+    v_count NUMBER;
+    v_local_table VARCHAR2(128);
 BEGIN
-    -- Разбираем список таблиц
-    WHILE v_pos <= LENGTH(p_tables_list) LOOP
-        v_next_pos := INSTR(p_tables_list, ',', v_pos);
-        
-        IF v_next_pos = 0 THEN
-            v_table_name := TRIM(SUBSTR(p_tables_list, v_pos));
-            v_pos := LENGTH(p_tables_list) + 1;
-        ELSE
-            v_table_name := TRIM(SUBSTR(p_tables_list, v_pos, v_next_pos - v_pos));
-            v_pos := v_next_pos + 1;
-        END IF;
-        
-        -- Создаем задание для каждой таблицы
-        IF v_table_name IS NOT NULL THEN
-            sync_table_with_params(
-                p_table_name => v_table_name,
-                p_schedule_interval => p_schedule,
-                p_dblink_name => p_dblink
-            );
-        END IF;
-    END LOOP;
-END create_multiple_sync_jobs;
+    v_local_table := 'LOCAL_' || p_table_name || '_BACKUP';
+    
+    -- Удаляем старую таблицу если существует
+    BEGIN
+        EXECUTE IMMEDIATE 'DROP TABLE ' || v_local_table;
+    EXCEPTION
+        WHEN OTHERS THEN NULL;
+    END;
+    
+    -- Создаем новую таблицу
+    v_sql := 'CREATE TABLE ' || v_local_table || 
+             ' AS SELECT * FROM ' || p_table_name || '@' || p_dblink_name;
+    
+    EXECUTE IMMEDIATE v_sql;
+    
+    -- Проверяем результат
+    EXECUTE IMMEDIATE 'SELECT COUNT(*) FROM ' || v_local_table INTO v_count;
+    
+    DBMS_OUTPUT.PUT_LINE('Создана таблица ' || v_local_table || ' с ' || v_count || ' строками');
+    
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Ошибка: ' || SQLERRM);
+        RAISE;
+END test_sync_table;
 /
 ```
 
 ## Примеры использования в SQL Workshop
 
-### Создание задания для одной таблицы
-
+### Тестирование простой процедуры:
 ```sql
--- Простейший вызов (ежедневно в 20:00)
-EXEC sync_table_with_params('REMOTE_TABLE1');
+-- Включаем вывод сообщений
+SET SERVEROUTPUT ON;
 
--- С пользовательским расписанием (каждые 6 часов)
-EXEC sync_table_with_params('REMOTE_TABLE2', 'FREQ=HOURLY;INTERVAL=6', 'my_dblink');
-
--- Еженедельно по понедельникам в 9:00
-EXEC sync_table_with_params('REMOTE_TABLE3', 'FREQ=WEEKLY;BYDAY=MON;BYHOUR=9');
-```
-
-### Создание нескольких заданий одновременно
-
-```sql
--- Создание заданий для нескольких таблиц
-EXEC create_multiple_sync_jobs('TABLE1,TABLE2,TABLE3', 'FREQ=DAILY;BYHOUR=20');
-
--- С разными расписаниями (требует отдельных вызовов)
-EXEC sync_table_with_params('ORDERS', 'FREQ=HOURLY;INTERVAL=2');
-EXEC sync_table_with_params('CUSTOMERS', 'FREQ=DAILY;BYHOUR=23');
-EXEC sync_table_with_params('PRODUCTS', 'FREQ=WEEKLY;BYDAY=SUN;BYHOUR=6');
-```
-
-## Мониторинг и управление
-
-### Представление для контроля статуса
-
-```sql
-CREATE OR REPLACE VIEW v_sync_status AS
-SELECT 
-    table_name,
-    status,
-    sync_date,
-    row_count,
-    duration_seconds,
-    CASE 
-        WHEN sync_date < SYSDATE - 2 THEN 'OUTDATED'
-        WHEN status = 'ERROR' THEN 'ERROR'
-        WHEN status = 'SUCCESS' THEN 'OK'
-        ELSE 'UNKNOWN'
-    END as health_status,
-    error_msg
-FROM (
-    SELECT 
-        table_name,
-        status,
-        sync_date,
-        row_count,
-        duration_seconds,
-        error_msg,
-        ROW_NUMBER() OVER (PARTITION BY table_name ORDER BY sync_date DESC) as rn
-    FROM sync_log
-) WHERE rn = 1
-ORDER BY table_name;
-```
-
-### Процедура для управления заданиями
-
-```sql
-CREATE OR REPLACE PROCEDURE manage_sync_jobs(
-    p_action VARCHAR2, -- 'ENABLE', 'DISABLE', 'DROP', 'STATUS'
-    p_table_name VARCHAR2 DEFAULT NULL -- NULL = все задания
-) IS
-    v_job_name VARCHAR2(128);
-    v_sql VARCHAR2(4000);
+-- Тестируем простую процедуру
 BEGIN
-    IF p_table_name IS NOT NULL THEN
-        v_job_name := 'SYNC_' || p_table_name || '_JOB';
-        v_sql := 'job_name = ''' || v_job_name || '''';
-    ELSE
-        v_sql := 'job_name LIKE ''SYNC_%_JOB''';
-    END IF;
-    
-    FOR job_rec IN (
-        SELECT job_name, enabled 
-        FROM user_scheduler_jobs 
-        WHERE job_name LIKE 'SYNC_%_JOB'
-        AND (p_table_name IS NULL OR job_name = 'SYNC_' || p_table_name || '_JOB')
-    ) LOOP
-        CASE UPPER(p_action)
-            WHEN 'ENABLE' THEN
-                DBMS_SCHEDULER.ENABLE(job_rec.job_name);
-                DBMS_OUTPUT.PUT_LINE('Включено: ' || job_rec.job_name);
-            WHEN 'DISABLE' THEN
-                DBMS_SCHEDULER.DISABLE(job_rec.job_name);
-                DBMS_OUTPUT.PUT_LINE('Отключено: ' || job_rec.job_name);
-            WHEN 'DROP' THEN
-                DBMS_SCHEDULER.DROP_JOB(job_rec.job_name, force => TRUE);
-                DBMS_OUTPUT.PUT_LINE('Удалено: ' || job_rec.job_name);
-            WHEN 'STATUS' THEN
-                DBMS_OUTPUT.PUT_LINE(job_rec.job_name || ': ' || job_rec.enabled);
-        END CASE;
-    END LOOP;
-END manage_sync_jobs;
+    test_sync_table('YOUR_TABLE_NAME', 'your_dblink');
+END;
 /
 ```
 
-## Дополнительные возможности
-
-### Интеграция с APEX приложением
-
-Для полной интеграции с вашим APEX приложением создайте процедуру обработки недоступности dblink:
-
+### Создание задания синхронизации:
 ```sql
-CREATE OR REPLACE FUNCTION get_table_data(
-    p_table_name VARCHAR2,
-    p_dblink_name VARCHAR2
-) RETURN VARCHAR2 IS
-    v_local_table VARCHAR2(128);
-    v_count NUMBER;
-    v_age_hours NUMBER;
+-- Создаем задание для ежедневной синхронизации в 20:00
 BEGIN
-    v_local_table := 'LOCAL_' || p_table_name || '_BACKUP';
-    
-    -- Проверяем доступность dblink
-    BEGIN
-        EXECUTE IMMEDIATE 'SELECT COUNT(*) FROM dual@' || p_dblink_name INTO v_count;
-        -- Если dblink доступен, используем удаленную таблицу
-        RETURN 'SELECT * FROM ' || p_table_name || '@' || p_dblink_name;
-    EXCEPTION
-        WHEN OTHERS THEN
-            -- Проверяем актуальность локальной копии
-            BEGIN
-                SELECT ROUND((SYSDATE - MAX(sync_date)) * 24) INTO v_age_hours
-                FROM sync_log 
-                WHERE table_name = p_table_name AND status = 'SUCCESS';
-                
-                IF v_age_hours <= 48 THEN -- Данные свежие (менее 48 часов)
-                    RETURN 'SELECT * FROM ' || v_local_table;
-                ELSE
-                    RETURN 'SELECT ''Data outdated: '' || ''' || v_age_hours || 
-                           ' hours'' as error_message FROM dual';
-                END IF;
-            EXCEPTION
-                WHEN OTHERS THEN
-                    RETURN 'SELECT ''No backup data available'' as error_message FROM dual';
-            END;
-    END;
-END get_table_data;
+    sync_table_with_params(
+        p_table_name => 'YOUR_TABLE_NAME',
+        p_schedule_interval => 'FREQ=DAILY;BYHOUR=20',
+        p_dblink_name => 'your_dblink'
+    );
+END;
 /
 ```
 
+## Диагностика ошибок компиляции
 
+Если процедура не компилируется, выполните:
+
+```sql
+-- Просмотр ошибок компиляции
+SELECT * FROM USER_ERRORS 
+WHERE NAME = 'SYNC_SINGLE_TABLE' AND TYPE = 'PROCEDURE'
+ORDER BY SEQUENCE;
+
+-- Или используйте команду
+SHOW ERRORS PROCEDURE sync_single_table;
+```
+
+## Основные исправления в коде
+
+1. **Правильная структура процедуры**: Переменные объявляются между `IS` и `BEGIN`[2][3][4]
+2. **Устранение синтаксических ошибок**: Добавлены пропущенные точки с запятой и исправлена структура блоков[1][2]
+3. **Улучшенная обработка ошибок**: Каждый блок имеет свою обработку исключений[5]
+4. **Корректная работа с CREATE TABLE AS SELECT**: Команда автоматически копирует структуру и данные[6][7][8]
+
+**Да, мой подход автоматически создает таблицу со всеми необходимыми атрибутами из источника**[6][7]. Команда `CREATE TABLE AS SELECT` копирует:
+- Все столбцы с их типами данных
+- NOT NULL ограничения  
+- Данные из исходной таблицы
+
+Вы можете просто выполнить одну команду в SQL Workshop, указав название таблицы, и система автоматически создаст задание синхронизации с мониторингом и обработкой ошибок[9][10].
+
+Цитаты:
+[1] PL/SQL (Solve Compilation Errors) - YouTube https://www.youtube.com/watch?v=n6giRZHcCD8
+[2] PLS-00103 Oracle stored procedure error - Stack Overflow https://stackoverflow.com/questions/13748041/pls-00103-oracle-stored-procedure-error
+[3] Error when declaring variables - Oracle Pl/Sql - Stack Overflow https://stackoverflow.com/questions/23455115/error-when-declaring-variables-oracle-pl-sql
+[4] CREATE PROCEDURE Statement - Oracle Help Center https://docs.oracle.com/en/database/oracle/oracle-database/23/lnpls/CREATE-PROCEDURE-statement.html
+[5] 11 Handling PL/SQL Errors https://docs.oracle.com/cd/B28359_01/appdev.111/b28370/errors.htm
+[6] Create Table Structure From Existing Table In Oracle SQL - C# Corner https://www.c-sharpcorner.com/blogs/how-to-create-table-structure-from-existing-table-in-oracle-sql
+[7] PL/SQL Copy Table - GeeksforGeeks https://www.geeksforgeeks.org/plsql/plsql-copy-table/
+[8] CREATE TABLE AS SELECT statement - AWS Documentation https://docs.aws.amazon.com/dms/latest/oracle-to-aurora-postgresql-migration-playbook/chap-oracle-aurora-pg.sql.ctas.html
+[9] Creating, Running, and Managing Jobs http://suporte.universalrh.com.br/oradoc/server.112/e25494/scheduse002.htm
+[10] oracle dbms_scheduler.create_job() error when executed within ... https://stackoverflow.com/questions/55279143/oracle-dbms-scheduler-create-job-error-when-executed-within-stored-procedure
+[11] 1000007380.heic https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/72242679/4a0bb2fa-d21d-4714-bd7f-8703f24c9830/1000007380.heic?AWSAccessKeyId=ASIA2F3EMEYEWDV5OYNA&Signature=gce0xJ2iWDIgnlNjPDShXhiXEsU%3D&x-amz-security-token=IQoJb3JpZ2luX2VjEFkaCXVzLWVhc3QtMSJGMEQCIG4AayJ%2Bfa2Ft9UCejQTq9n%2Bu1bgkljj%2BkovlCSr6jIDAiABWnGBQkObLm8hctfcticVU8tuV0emaDq%2FTqMna3cYzSr6BAiB%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F8BEAEaDDY5OTc1MzMwOTcwNSIMJEHZ9G27UHVFYzJeKs4EOrANqov4P8JGeN5uddCAPNhKqU2zs7UjePTkfmr0%2BFybMqDVqFOFsIB%2BzZKv%2FtggwaXKIqZSWgVxJSMgQC7rwFf56gcBeKFc%2BObOZdxxLbLa%2BcD3CSuFqyUtohK9Xh0izDU0Z3%2BnHm7t94rlFPVmfP5%2ByZ1dAp2ndkoj3gqstmu5b886Sa2CniWcMLH8SJoqohbOcVOSwx%2F2BBBk83uHFQtliHMJba0C2CX8MUjxTWqfUmA5rVGP%2FuvZh5nUNCMiFnoy4ZSZciPCyPFPZq13lE%2FzjNrP%2B2dIP10NJTjMsC4BUAu22l7JBA82X34WBPwCT4Kdald04dALcLEDTTzBarf2t5tKl8tsjoW7b62PJDJLufYWfEpXSShgcQ1dmWOTG5SxE6OPsCenaZFRCzWAeAogvhjXvsRK69wXyP%2FCm%2FFaQ1M0tdeJ4kyLJBE9jaZSRofJyGwvMVpvp%2FbVXtej6EwpkkdWttSdxQAVA8GiuA65R1vQNqepez7WNpaXl6lFtiR%2FAEPmXRs6fd0oRvq9i4cG01wRsChW4TSjn9%2FsmLAq9bTr3Rtks4dtpmZA7as80nrdRpZUCBXO2wyjuWXaUmPIyDKbW9p1jelFrRyp%2BzLktxPq0VURXJHtvIQTR93sH1YuRaWeVtcPv%2BMTPoZc%2FcwUe%2FIk0CIFT7a1zOSixIJ4lDqPcqJljQUuv8FrXoNrjAWg1r7eZaQKGR%2FrHq2W9VrF3Q%2BP39m6kORtPX3YcLuL%2BLK7rR0Gq895tbC5sBWDS5qaHEwNkH2f%2FoXF428w34CbxAY6mwGGfpQlbxEciKwVJ5da3LAdr2OkAP5Ci%2FTDOLQf0qOIjw%2F9GRhMz%2BOcPl0WkOYquny4Bhxnf7%2FRfqU88oIjxTGFB63HVwL5oR8D6U9faJ%2BuDIJ1f10QM0PsxTRZrZFlx%2BUD1fEtNSqZIdNHpNVwnMqLeOIXhCLFITigYgcY0XRBm9xHqF0rLrNvNqii7U7rTqvhRz1uOf0lZyD0ng%3D%3D&Expires=1753664442
+[12] RDBMS Scheduler can not access table - Ask TOM https://asktom.oracle.com/ords/f?p=100%3A11%3A%3A%3A%3A%3AP11_QUESTION_ID%3A9546943300346914524
+[13] APEX 404 Not Found after ORDS upgrade to 23.1 or later when SYS ... https://www.dbaplus.ca/2024/12/apex-404-not-found-after-ords-upgrade.html
+[14] DBMS_SCHEDULER - Oracle Help Center https://docs.oracle.com/cd/B19306_01/appdev.102/b14258/d_sched.htm
+[15] Web Service Requests Using Credential_static_id outside APEX in ... https://support.oracle.com/knowledge/Oracle%20Cloud/2967518_1.html
+[16] Scheduling a procedure with DBMS_SCHEDULER. PLS-00103 ... https://dba.stackexchange.com/questions/274088/scheduling-a-procedure-with-dbms-scheduler-pls-00103-encountered-the-symbol-n
+[17] Oracle APEX 23.1 – Nuevo Explorador de Objetos - Kiú https://kiusi.com/en/oracle-apex-23-1-nuevo-explorador-de-objetos/
+[18] How can I create a copy of an Oracle table without copying the data? https://stackoverflow.com/questions/233870/how-can-i-create-a-copy-of-an-oracle-table-without-copying-the-data
+[19] How to View Oracle Compile Errors for Procedures ... - RazorSQL https://www.razorsql.com/articles/oracle_compile_errors.html
+[20] Apex - General - Errors - Ted Struik - Oracle https://tedstruik-oracle.nl/ords/f?p=25384%3A1012%3A%3A%3A%3A%3A%3A
+[21] 13.1.18.4 CREATE TABLE ... SELECT Statement https://docs.oracle.com/cd/E17952_01/mysql-5.7-en/create-table-select.html
+[22] DBMS_SCHEDULER - Oracle Help Center https://docs.oracle.com/database/121/ARPLS/d_sched.htm
+[23] 22 apex_error - API Reference https://docs.oracle.com/en/database/oracle/apex/23.1/aeapi/APEX_ERROR.html
+[24] Copy complete structure of a table in Oracle without using Backup https://dba.stackexchange.com/questions/18058/copy-complete-structure-of-a-table-in-oracle-without-using-backup
+[25] Procedure created with compilation errors? SHOW ERRORS? https://forums.oracle.com/ords/apexds/post/procedure-created-with-compilation-errors-show-errors-8783
+[26] Oracle Apex 23.1 - a deep dive into the biggest new features https://www.youtube.com/watch?v=Hi4KVHYdPBU
+[27] How to create exact copy of a table - Oracle Forums https://forums.oracle.com/ords/apexds/post/how-to-create-exact-copy-of-a-table-5315
+[28] Compilation error on stored procedure using PL/SQL in Oracle? https://dba.stackexchange.com/questions/166639/compilation-error-on-stored-procedure-using-pl-sql-in-oracle
+[29] How to Quickly Debug a PL/SQL Body Returning a SQL Query for a ... https://www.youtube.com/watch?v=sY5qgqUK604
+[30] Oracle Create Stored Procedure shows error but completed ... https://forum.liquibase.org/t/oracle-create-stored-procedure-shows-error-but-completed-successfully/9598
+[31] Debugging in Oracle APEX - YouTube https://www.youtube.com/watch?v=VVr8dybBeuE
+[32] My DBMS_SCHEDULER.CREATE_JOB not running? - Stack Overflow https://stackoverflow.com/questions/34800102/my-dbms-scheduler-create-job-not-running
+[33] Debugging PL/SQL…in APEX - ThatJeffSmith https://www.thatjeffsmith.com/archive/2019/05/debugging-pl-sql-in-apex/
+[34] Fixing Oracle SHOW ERRORS Compile Issues - Galaxy https://www.getgalaxy.io/learn/glossary/how-to-show-errors-in-oracle
+[35] Syntax error when a job is executed in anonymous block in Oracle https://dba.stackexchange.com/questions/255727/syntax-error-when-a-job-is-executed-in-anonymous-block-in-oracle
+[36] Debugging | APEX Office Print (AOP) https://www.apexofficeprint.com/docs/More/debugging/
+[37] Viewing PLSQL Compilation Errors in Oracle SQL Developer https://www.thatjeffsmith.com/archive/2012/01/viewing-plsql-compilation-errors-in-oracle-sql-developer/
+[38] dbms_scheduler.create_job() error - Oracle Forums https://forums.oracle.com/ords/apexds/post/dbms-scheduler-create-job-error-6825
+[39] APEX_DEBUG - Oracle Help Center https://docs.oracle.com/cd/E59726_01/doc.50/e39149/apex_debug.htm
+[40] Stored procedure compilation error - Toad for Oracle & DevOps Toolkit https://forums.toadworld.com/t/stored-procedure-compilation-error/10180
+[41] 157 dbms_scheduler - PL/SQL Packages and Types Reference https://docs.oracle.com/en/database/oracle/oracle-database/21/arpls/DBMS_SCHEDULER.html
+[42] APEX_DEBUG_MESSAGE - Oracle Help Center https://docs.oracle.com/cd/E17556_01/apirefs.40/e15519/apex_debug.htm
+[43] Compilation error in Stored Procedure (Oracle SQL) - Stack Overflow https://stackoverflow.com/questions/70657862/compilation-error-in-stored-procedure-oracle-sql
+[44] Error on creating Scheduler job - DBAsupport.com Forums https://www.dbasupport.com/forums/showthread.php?63261-Error-on-creating-Scheduler-job
+[45] Resolving the PLS-00103 Error in Oracle Stored Procedures https://www.youtube.com/watch?v=T4bH-Y4EMSI
+[46] oracle database - Declaring variables in pl/sql block - Stack Overflow https://stackoverflow.com/q/20452984
+[47] Distinction between PROCEDURE and CREATE OR REPLACE ... https://stackoverflow.com/questions/66977385/distinction-between-procedure-and-create-or-replace-procedure-in-toad-and-oracle
+[48] Error PLS-00103 for a simple procedure - Oracle Forums https://forums.oracle.com/ords/apexds/post/error-pls-00103-for-a-simple-procedure-0026
+[49] Formula Compilation Errors - Oracle Help Center https://docs.oracle.com/en/cloud/saas/human-resources/faiam/formula-compilation-errors.html
+[50] REPLACE - Oracle Help Center https://docs.oracle.com/en/database/oracle/oracle-database/18/sqlrf/REPLACE.html
+[51] Error(24,1): PLS-00103: Encountered the symbol "BEGIN" - Ask TOM https://asktom.oracle.com/ords/f?p=100%3A11%3A0%3A%3A%3A%3AP11_QUESTION_ID%3A9533250100346836479
+[52] Error Handling and Diagnostics - Oracle Help Center https://docs.oracle.com/cd/A97385_01/appdev.920/a42525/ch08.htm
+[53] Oracle APEX - DML Inside Procedure || Insert || Update || Delete https://www.youtube.com/watch?v=FWdPiJC39W0
+[54] Newest 'pls-00103' Questions - Stack Overflow https://stackoverflow.com/questions/tagged/pls-00103
+[55] PL/SQL Messages - Server Messages: ORA-02351 to ORA-29799 https://docs.oracle.com/cd/A58617_01/server.804/a58312/newcha29.htm
+[56] Create or replace function/procedure - Oracle Forums https://forums.oracle.com/ords/apexds/post/create-or-replace-function-procedure-6912
+[57] PLS-00103 - Database Error Messages - Oracle Help Center https://docs.oracle.com/error-help/db/pls-00103/
+[58] 8 Error Handling and Diagnostics https://pages.di.unipi.it/ghelli/didattica/bdldoc/B19306_01/appdev.102/a96109/pco08err.htm
+[59] Create/Replace procedure command - Ask TOM https://asktom.oracle.com/ords/f?p=100%3A11%3A0%3A%3A%3A%3AP11_QUESTION_ID%3A1366203176755
+[60] ERROR: "ORA-06550: PLS-00103: Encountered the symbol "end-of ... https://knowledge.informatica.com/s/article/14954?language=en_US
 
 
 

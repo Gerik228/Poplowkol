@@ -1,4 +1,375 @@
 
+```sql
+CREATE OR REPLACE PROCEDURE sync_table_with_params(
+    p_table_name VARCHAR2,
+    p_schedule_interval VARCHAR2 DEFAULT 'FREQ=DAILY;BYHOUR=20',
+    p_dblink_name VARCHAR2 DEFAULT 'your_dblink',
+    p_drop_existing BOOLEAN DEFAULT TRUE
+) IS
+    v_job_name VARCHAR2(128);
+    v_local_table_name VARCHAR2(128);
+    v_ddl_statement VARCHAR2(4000);
+    v_job_exists NUMBER;
+    v_error_msg
+    -- Формируем имена
+    v_local_table_name := 'LOCAL_' || p_table_name || '_BACKUP';
+    v_job_name := 'SYNC_' || p_table_name || '_JOB';
+    
+    -- Проверяем существование задания
+    SELECT COUNT(*) INTO v_job_exists
+    FROM user_scheduler_jobs 
+    WHERE job_name = v_job_name;
+    
+    -- Удаляем существующее задание если нужно
+    IF v_job_exists > 0 AND p_drop_existing THEN
+        DBMS_SCHEDULER.DROP_JOB(job_name => v_job_name, force => TRUE);
+        DBMS_OUTPUT.PUT_LINE('Удалено существующее задание: ' || v_job_name);
+    END IF;
+    
+    -- Создаем задание с динамическим PL/SQL блоком
+    DBMS_SCHEDULER.CREATE_JOB(
+        job_name        => v_job_name,
+        job_type        => 'PLSQL_BLOCK',
+        job_action      => 'BEGIN sync_single_table(''' || p_table_name || ''', ''' || 
+                          p_dblink_name || '''); END;',
+        start_date      => SYSTIMESTAMP + INTERVAL '1' MINUTE,
+        repeat_interval => p_schedule_interval,
+        enabled         => TRUE,
+        comments        => 'Автоматическая синхронизация таблицы ' || p_table_name
+    );
+    
+    DBMS_OUTPUT.PUT_LINE('Создано задание: ' || v_job_name);
+    DBMS_OUTPUT.PUT_LINE('Расписание: ' || p_schedule_interval);
+    DBMS_OUTPUT.PUT_LINE('Локальная таблица: ' || v_local_table_name);
+    
+EXCEPTION
+    WHEN OTHERS THEN
+        v_error_msg := SQLERRM;
+        DBMS_OUTPUT.PUT_LINE('Ошибка при создании задания: ' || v_error_msg);
+        RAISE;
+END sync_table_with_params;
+/
+```
+
+### 2. Вспомогательная процедура для синхронизации
+
+```sql
+CREATE OR REPLACE PROCEDURE sync_single_table(
+    p_table_name VARCHAR2,
+    p_dblink_name VARCHAR2
+) IS
+    v_local_table_name VARCHAR2(128);
+    v_backup_table_name VARCHAR2(128);
+    v_ddl_statement VARCHAR2(4000);
+    v_error_msg VARCHAR2(4000);
+    v_start_time TIMESTAMP;
+    v_end_time TIMESTAMP;
+    v_row_count NUMBER;
+BEGIN
+    v_start_time := SYSTIMESTAMP;
+    v_local_table_name := 'LOCAL_' || p_table_name || '_BACKUP';
+    v_backup_table_name := 'LOCAL_' || p_table_name || '_OLD';
+    
+    -- Создаем backup старой таблицы (если существует)
+    BEGIN
+        EXECUTE IMMEDIATE 'ALTER TABLE ' || v_local_table_name || 
+                         ' RENAME TO ' || v_backup_table_name;
+    EXCEPTION
+        WHEN OTHERS THEN NULL; -- Таблица не существует
+    END;
+    
+    -- Создаем новую таблицу из удаленного источника
+    v_ddl_statement := 'CREATE TABLE ' || v_local_table_name || 
+                      ' AS SELECT * FROM ' || p_table_name || '@' || p_dblink_name;
+    
+    BEGIN
+        EXECUTE IMMEDIATE v_ddl_statement;
+        
+        -- Подсчитываем количество строк
+        EXECUTE IMMEDIATE 'SELECT COUNT(*) FROM ' || v_local_table_name 
+                         INTO v_row_count;
+        
+        -- Удаляем старую backup таблицу
+        BEGIN
+            EXECUTE IMMEDIATE 'DROP TABLE ' || v_backup_table_name;
+        EXCEPTION
+            WHEN OTHERS THEN NULL;
+        END;
+        
+        -- Обновляем статистику
+        DBMS_STATS.GATHER_TABLE_STATS(USER, v_local_table_name);
+        
+        v_end_time := SYSTIMESTAMP;
+        
+        -- Логируем успешное выполнение
+        INSERT INTO sync_log (
+            table_name, sync_date, status, row_count, 
+            duration_seconds, error_msg
+        ) VALUES (
+            p_table_name, SYSDATE, 'SUCCESS', v_row_count,
+            EXTRACT(SECOND FROM (v_end_time - v_start_time)), NULL
+        );
+        COMMIT;
+        
+    EXCEPTION
+        WHEN OTHERS THEN
+            v_error_msg := SQLERRM;
+            v_end_time := SYSTIMESTAMP;
+            
+            -- Восстанавливаем старую таблицу если возможно
+            BEGIN
+                EXECUTE IMMEDIATE 'ALTER TABLE ' || v_backup_table_name || 
+                                 ' RENAME TO ' || v_local_table_name;
+            EXCEPTION
+                WHEN OTHERS THEN NULL;
+            END;
+            
+            -- Логируем ошибку
+            INSERT INTO sync_log (
+                table_name, sync_date, status, row_count,
+                duration_seconds, error_msg
+            ) VALUES (
+                p_table_name, SYSDATE, 'ERROR', 0,
+                EXTRACT(SECOND FROM (v_end_time - v_start_time)), v_error_msg
+            );
+            COMMIT;
+            
+            RAISE;
+    END;
+END sync_single_table;
+/
+```
+
+### 3. Расширенная таблица для мониторинга
+
+```sql
+CREATE TABLE sync_log (
+    id NUMBER GENERATED ALWAYS AS IDENTITY,
+    table_name VARCHAR2(128) NOT NULL,
+    sync_date DATE NOT NULL,
+    status VARCHAR2(10) NOT NULL,
+    row_count NUMBER DEFAULT 0,
+    duration_seconds NUMBER,
+    error_msg VARCHAR2(4000),
+    created_at TIMESTAMP DEFAULT SYSTIMESTAMP,
+    CONSTRAINT pk_sync_log PRIMARY KEY (id),
+    CONSTRAINT chk_sync_status CHECK (status IN ('SUCCESS', 'ERROR', 'WARNING'))
+);
+
+-- Индексы для быстрого поиска
+CREATE INDEX idx_sync_log_table_date ON sync_log(table_name, sync_date);
+CREATE INDEX idx_sync_log_status ON sync_log(status);
+```
+
+### 4. Простая процедура для массового создания заданий
+
+```sql
+CREATE OR REPLACE PROCEDURE create_multiple_sync_jobs(
+    p_tables_list VARCHAR2, -- Список таблиц через запятую
+    p_schedule VARCHAR2 DEFAULT 'FREQ=DAILY;BYHOUR=20',
+    p_dblink VARCHAR2 DEFAULT 'your_dblink'
+) IS
+    v_table_name VARCHAR2(128);
+    v_pos NUMBER := 1;
+    v_next_pos NUMBER;
+BEGIN
+    -- Разбираем список таблиц
+    WHILE v_pos <= LENGTH(p_tables_list) LOOP
+        v_next_pos := INSTR(p_tables_list, ',', v_pos);
+        
+        IF v_next_pos = 0 THEN
+            v_table_name := TRIM(SUBSTR(p_tables_list, v_pos));
+            v_pos := LENGTH(p_tables_list) + 1;
+        ELSE
+            v_table_name := TRIM(SUBSTR(p_tables_list, v_pos, v_next_pos - v_pos));
+            v_pos := v_next_pos + 1;
+        END IF;
+        
+        -- Создаем задание для каждой таблицы
+        IF v_table_name IS NOT NULL THEN
+            sync_table_with_params(
+                p_table_name => v_table_name,
+                p_schedule_interval => p_schedule,
+                p_dblink_name => p_dblink
+            );
+        END IF;
+    END LOOP;
+END create_multiple_sync_jobs;
+/
+```
+
+## Примеры использования в SQL Workshop
+
+### Создание задания для одной таблицы
+
+```sql
+-- Простейший вызов (ежедневно в 20:00)
+EXEC sync_table_with_params('REMOTE_TABLE1');
+
+-- С пользовательским расписанием (каждые 6 часов)
+EXEC sync_table_with_params('REMOTE_TABLE2', 'FREQ=HOURLY;INTERVAL=6', 'my_dblink');
+
+-- Еженедельно по понедельникам в 9:00
+EXEC sync_table_with_params('REMOTE_TABLE3', 'FREQ=WEEKLY;BYDAY=MON;BYHOUR=9');
+```
+
+### Создание нескольких заданий одновременно
+
+```sql
+-- Создание заданий для нескольких таблиц
+EXEC create_multiple_sync_jobs('TABLE1,TABLE2,TABLE3', 'FREQ=DAILY;BYHOUR=20');
+
+-- С разными расписаниями (требует отдельных вызовов)
+EXEC sync_table_with_params('ORDERS', 'FREQ=HOURLY;INTERVAL=2');
+EXEC sync_table_with_params('CUSTOMERS', 'FREQ=DAILY;BYHOUR=23');
+EXEC sync_table_with_params('PRODUCTS', 'FREQ=WEEKLY;BYDAY=SUN;BYHOUR=6');
+```
+
+## Мониторинг и управление
+
+### Представление для контроля статуса
+
+```sql
+CREATE OR REPLACE VIEW v_sync_status AS
+SELECT 
+    table_name,
+    status,
+    sync_date,
+    row_count,
+    duration_seconds,
+    CASE 
+        WHEN sync_date < SYSDATE - 2 THEN 'OUTDATED'
+        WHEN status = 'ERROR' THEN 'ERROR'
+        WHEN status = 'SUCCESS' THEN 'OK'
+        ELSE 'UNKNOWN'
+    END as health_status,
+    error_msg
+FROM (
+    SELECT 
+        table_name,
+        status,
+        sync_date,
+        row_count,
+        duration_seconds,
+        error_msg,
+        ROW_NUMBER() OVER (PARTITION BY table_name ORDER BY sync_date DESC) as rn
+    FROM sync_log
+) WHERE rn = 1
+ORDER BY table_name;
+```
+
+### Процедура для управления заданиями
+
+```sql
+CREATE OR REPLACE PROCEDURE manage_sync_jobs(
+    p_action VARCHAR2, -- 'ENABLE', 'DISABLE', 'DROP', 'STATUS'
+    p_table_name VARCHAR2 DEFAULT NULL -- NULL = все задания
+) IS
+    v_job_name VARCHAR2(128);
+    v_sql VARCHAR2(4000);
+BEGIN
+    IF p_table_name IS NOT NULL THEN
+        v_job_name := 'SYNC_' || p_table_name || '_JOB';
+        v_sql := 'job_name = ''' || v_job_name || '''';
+    ELSE
+        v_sql := 'job_name LIKE ''SYNC_%_JOB''';
+    END IF;
+    
+    FOR job_rec IN (
+        SELECT job_name, enabled 
+        FROM user_scheduler_jobs 
+        WHERE job_name LIKE 'SYNC_%_JOB'
+        AND (p_table_name IS NULL OR job_name = 'SYNC_' || p_table_name || '_JOB')
+    ) LOOP
+        CASE UPPER(p_action)
+            WHEN 'ENABLE' THEN
+                DBMS_SCHEDULER.ENABLE(job_rec.job_name);
+                DBMS_OUTPUT.PUT_LINE('Включено: ' || job_rec.job_name);
+            WHEN 'DISABLE' THEN
+                DBMS_SCHEDULER.DISABLE(job_rec.job_name);
+                DBMS_OUTPUT.PUT_LINE('Отключено: ' || job_rec.job_name);
+            WHEN 'DROP' THEN
+                DBMS_SCHEDULER.DROP_JOB(job_rec.job_name, force => TRUE);
+                DBMS_OUTPUT.PUT_LINE('Удалено: ' || job_rec.job_name);
+            WHEN 'STATUS' THEN
+                DBMS_OUTPUT.PUT_LINE(job_rec.job_name || ': ' || job_rec.enabled);
+        END CASE;
+    END LOOP;
+END manage_sync_jobs;
+/
+```
+
+## Дополнительные возможности
+
+### Интеграция с APEX приложением
+
+Для полной интеграции с вашим APEX приложением создайте процедуру обработки недоступности dblink:
+
+```sql
+CREATE OR REPLACE FUNCTION get_table_data(
+    p_table_name VARCHAR2,
+    p_dblink_name VARCHAR2
+) RETURN VARCHAR2 IS
+    v_local_table VARCHAR2(128);
+    v_count NUMBER;
+    v_age_hours NUMBER;
+BEGIN
+    v_local_table := 'LOCAL_' || p_table_name || '_BACKUP';
+    
+    -- Проверяем доступность dblink
+    BEGIN
+        EXECUTE IMMEDIATE 'SELECT COUNT(*) FROM dual@' || p_dblink_name INTO v_count;
+        -- Если dblink доступен, используем удаленную таблицу
+        RETURN 'SELECT * FROM ' || p_table_name || '@' || p_dblink_name;
+    EXCEPTION
+        WHEN OTHERS THEN
+            -- Проверяем актуальность локальной копии
+            BEGIN
+                SELECT ROUND((SYSDATE - MAX(sync_date)) * 24) INTO v_age_hours
+                FROM sync_log 
+                WHERE table_name = p_table_name AND status = 'SUCCESS';
+                
+                IF v_age_hours <= 48 THEN -- Данные свежие (менее 48 часов)
+                    RETURN 'SELECT * FROM ' || v_local_table;
+                ELSE
+                    RETURN 'SELECT ''Data outdated: '' || ''' || v_age_hours || 
+                           ' hours'' as error_message FROM dual';
+                END IF;
+            EXCEPTION
+                WHEN OTHERS THEN
+                    RETURN 'SELECT ''No backup data available'' as error_message FROM dual';
+            END;
+    END;
+END get_table_data;
+/
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ```html
 <div class="news-card-container">
   <article class="news-card">

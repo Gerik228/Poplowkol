@@ -1,636 +1,825 @@
-а давай сами создадим это плагин в самом апексе .
-напиши осень подробную инструкцию учитывая особенности версии платформы и наличие элементов данной версии 23.1
+set define off verify off feedback off
+whenever sqlerror exit sql.sqlcode rollback
+--------------------------------------------------------------------------------
+--
+-- ORACLE Application Express (APEX) export file
+--
+-- Application     : Modal News Card Template Component
+-- Type            : Template Component Plugin
+-- Version         : 1.0
+-- APEX Version    : 23.1.0
+-- Date            : 29-JUL-2025
+-- Author          : Your Name
+--
+-- Совместимость: Oracle APEX 23.1+
+-- Тип: Template Component (не Region Plugin)
+-- 
+--------------------------------------------------------------------------------
 
-# Пошаговая инструкция создания плагина модального окна в Oracle APEX 23.1
+prompt Installing Modal News Card Template Component...
 
-Создадим плагин модального окна для карточек новостей прямо в интерфейсе Oracle APEX 23.1, учитывая все особенности данной версии платформы.
+begin
+    wwv_flow_api.import_begin (
+        p_version_yyyy_mm_dd => '2023.05.17',
+        p_release            => '23.1.0.00.45',
+        p_default_workspace_id => wwv_flow_api.find_security_group_id,
+        p_default_application_id => &APP_ID,
+        p_default_id_offset    => null,
+        p_default_owner        => null
+    );
+end;
+/
 
-## Шаг 1: Переход к созданию плагина
+-- Основной плагин Template Component
+begin
+    wwv_flow_api.create_plugin(
+        p_id                      => wwv_flow_api.id(1),
+        p_plugin_type             => 'TEMPLATE COMPONENT',
+        p_name                    => 'COM.COMPANY.MODAL.NEWS.CARD.TC',
+        p_display_name            => 'Modal News Card',
+        p_category                => 'CONTENT',
+        p_supported_ui_types      => 'DESKTOP:JQM_SMARTPHONE:JQM_TABLET',
+        p_supported_component_types => 'APEX_APPLICATION_PAGE_REGIONS',
+        p_image_prefix            => '#PLUGIN_PREFIX#',
+        p_api_version             => 2,
+        p_template_component_type => 'MULTIPLE',
+        p_default_escape_mode     => 'HTML',
+        
+        -- HTML Template - основа Template Component
+        p_template_component_partial => wwv_flow_utilities.join(wwv_flow_t_varchar2(
+'{if APEX$IS_LAZY_LOADING/}',
+'<div class="apex-loading-indicator">',
+'  <span class="fa fa-spinner fa-pulse fa-2x"></span>',
+'  <span class="u-VisuallyHidden">Загрузка...</span>',
+'</div>',
+'{else/}',
+'',
+'<!-- Модальная карточка новости -->',
+'<div class="modal-news-card" data-id="#ID#" onclick="openNewsModal(''#ID#'', this)">',
+'  ',
+'  <!-- Изображение новости -->',
+'  {if IMAGE_URL/}',
+'  <div class="news-card-image">',
+'    <img src="#IMAGE_URL#" alt="#TITLE#" loading="lazy">',
+'    <div class="news-card-overlay">',
+'      <span class="fa fa-expand news-expand-icon"></span>',
+'    </div>',
+'  </div>',
+'  {endif/}',
+'  ',
+'  <!-- Содержимое карточки -->',
+'  <div class="news-card-content">',
+'    ',
+'    <!-- Заголовок -->',
+'    <h3 class="news-card-title">#TITLE#</h3>',
+'    ',
+'    <!-- Дата и категория -->',
+'    <div class="news-card-meta">',
+'      {if PUBLISH_DATE/}',
+'      <span class="news-date">',
+'        <span class="fa fa-calendar"></span>',
+'        #PUBLISH_DATE#',
+'      </span>',
+'      {endif/}',
+'      ',
+'      {if CATEGORY/}',
+'      <span class="news-category">',
+'        <span class="fa fa-tag"></span>',
+'        #CATEGORY#',
+'      </span>',
+'      {endif/}',
+'    </div>',
+'    ',
+'    <!-- Краткое описание -->',
+'    {if EXCERPT/}',
+'    <p class="news-card-excerpt">#EXCERPT#</p>',
+'    {endif/}',
+'    ',
+'    <!-- Автор -->',
+'    {if AUTHOR/}',
+'    <div class="news-card-author">',
+'      <span class="fa fa-user"></span>',
+'      #AUTHOR#',
+'    </div>',
+'    {endif/}',
+'    ',
+'    <!-- Кнопки действий -->',
+'    {if APEX$HAS_ACTION_BUTTONS/}',
+'    <div class="news-card-actions">',
+'      #MENU_ACTION#',
+'    </div>',
+'    {endif/}',
+'    ',
+'  </div>',
+'  ',
+'</div>',
+'',
+'{endif/}')),
 
-### 1.1 Навигация в интерфейсе
-1. **Откройте ваше приложение** в App Builder
-2. **Перейдите в Shared Components** (кнопка в верхней части экрана)
-3. В разделе **"Other Components"** найдите и нажмите **"Plug-ins"**[1][2]
-4. Нажмите кнопку **"Create"** (обычно зеленая кнопка в правом верхнем углу)[3]
+        -- Report Body - обертка для Multiple режима
+        p_template_component_report_body => wwv_flow_utilities.join(wwv_flow_t_varchar2(
+'<div class="modal-news-cards-container" id="#REGION_STATIC_ID#_container">',
+'  #APEX$ROWS#',
+'</div>',
+'',
+'<!-- Модальное окно (создается один раз для региона) -->',
+'<div id="#REGION_STATIC_ID#_modal" class="apex-modal-overlay news-modal" style="display: none;">',
+'  <div class="news-modal-dialog">',
+'    ',
+'    <!-- Заголовок модального окна -->',
+'    <div class="news-modal-header">',
+'      <h2 class="news-modal-title" id="#REGION_STATIC_ID#_modal_title">Новость</h2>',
+'      <button type="button" class="news-modal-close" onclick="closeNewsModal(''#REGION_STATIC_ID#'')" aria-label="Закрыть">',
+'        <span class="fa fa-times"></span>',
+'      </button>',
+'    </div>',
+'    ',
+'    <!-- Содержимое модального окна -->',
+'    <div class="news-modal-body" id="#REGION_STATIC_ID#_modal_body">',
+'      <div class="news-modal-loading">',
+'        <span class="fa fa-spinner fa-pulse"></span>',
+'        Загрузка...',
+'      </div>',
+'    </div>',
+'    ',
+'    <!-- Подвал модального окна -->',
+'    <div class="news-modal-footer" id="#REGION_STATIC_ID#_modal_footer">',
+'      <button type="button" class="t-Button t-Button--simple" onclick="closeNewsModal(''#REGION_STATIC_ID#'')">',
+'        Закрыть',
+'      </button>',
+'    </div>',
+'    ',
+'  </div>',
+'</div>')),
 
-### 1.2 Выбор типа создания
-В появившемся диалоге выберите **"From Scratch"** для создания плагина с нуля[3].
-
-## Шаг 2: Базовые настройки плагина
-
-### 2.1 Основная информация
-Заполните следующие поля:
-
-- **Name**: `Modal News Card`
-- **Internal Name**: `com.company.modal.news.card` (используйте свой домен для уникальности)[3][4]
-- **Type**: **Region** (выберите из выпадающего списка)[5]
-- **Category**: `Misc` или создайте свою категорию
-
-### 2.2 Важные особенности APEX 23.1
-В версии 23.1 появился новый тип плагинов - **Template Components**[6][7]. Убедитесь, что выбираете именно **"Region"**, а не "Template Component", если хотите полный контроль над рендерингом.
-
-## Шаг 3: Настройка Source Code
-
-### 3.1 Render Function
-В поле **"Source"** вставьте следующий PL/SQL код:
-
-```sql
-FUNCTION render_modal_news_card (
-    p_region IN apex_plugin.t_region,
-    p_plugin IN apex_plugin.t_plugin
-) RETURN apex_plugin.t_region_render_result AS
-    
-    l_result        apex_plugin.t_region_render_result;
-    l_region_id     VARCHAR2(255);
-    l_modal_id      VARCHAR2(255);
-    l_modal_width   NUMBER;
-    l_modal_height  NUMBER;
-    l_show_close    VARCHAR2(1);
-    l_news_query    CLOB;
-    l_bg_color      VARCHAR2(50);
-    l_animation     VARCHAR2(50);
-    
-BEGIN
-    -- Получение ID региона
-    l_region_id := COALESCE(p_region.static_id, 'R' || p_region.id);
-    l_modal_id := l_region_id || '_modal';
-    
-    -- Получение значений атрибутов (до 25 в APEX 23.1)
-    l_news_query := p_region.attribute_01;
-    l_modal_width := NVL(TO_NUMBER(p_region.attribute_02), 600);
-    l_modal_height := NVL(TO_NUMBER(p_region.attribute_03), 400);
-    l_show_close := NVL(p_region.attribute_04, 'Y');
-    l_bg_color := NVL(p_region.attribute_05, '#ffffff');
-    l_animation := NVL(p_region.attribute_06, 'fadeIn');
-    
-    -- Отладочная информация для разработки
-    IF apex_application.g_debug THEN
-        apex_plugin_util.debug_region(
-            p_plugin => p_plugin,
-            p_region => p_region
-        );
-    END IF;
-    
-    -- Генерация HTML структуры модального окна
-    htp.prn('<div id="' || l_modal_id || '" class="apex-modal-overlay apex-news-card-modal" style="display: none;">');
-    htp.prn('  <div class="apex-news-card" data-width="' || l_modal_width || '" data-height="' || l_modal_height || '" data-animation="' || l_animation || '">');
-    
-    -- Кнопка закрытия (условно)
-    IF l_show_close = 'Y' THEN
-        htp.prn('    <button class="apex-modal-close" type="button" aria-label="Close" onclick="modalNewsCard.close(''' || l_region_id || ''')">');
-        htp.prn('      <span class="fa fa-times"></span>');
-        htp.prn('    </button>');
-    END IF;
-    
-    -- Структура карточки новости
-    htp.prn('    <div class="news-header">');
-    htp.prn('      <h2 class="news-title" id="news-title-' || l_region_id || '">Заголовок новости</h2>');
-    htp.prn('      <span class="news-date" id="news-date-' || l_region_id || '">Дата публикации</span>');
-    htp.prn('    </div>');
-    
-    htp.prn('    <div class="news-content">');
-    htp.prn('      <div class="news-image" id="news-image-' || l_region_id || '" style="display: none;">');
-    htp.prn('        <img src="" alt="" />');
-    htp.prn('      </div>');
-    htp.prn('      <div class="news-text" id="news-text-' || l_region_id || '">Содержимое новости</div>');
-    htp.prn('    </div>');
-    
-    htp.prn('    <div class="news-filters" id="news-filters-' || l_region_id || '">');
-    htp.prn('      <!-- Здесь будут элементы фильтрации -->');
-    htp.prn('    </div>');
-    
-    htp.prn('  </div>');
-    htp.prn('</div>');
-    
-    -- Инициализация JavaScript (будет добавлен позже)
-    apex_javascript.add_onload_code(
-        p_code => 'console.log("Modal News Card Plugin загружен для региона: ' || l_region_id || '");'
+        p_substitute_attributes      => true,
+        p_subscribe_plugin_events   => true,
+        p_version_identifier        => '1.0',
+        p_about_url                 => null,
+        p_plugin_comment            => 'Template Component для отображения модальных карточек новостей в стиле современного веб-дизайна'
     );
     
-    RETURN l_result;
+    -- Custom Attributes для Template Component
     
-EXCEPTION
-    WHEN OTHERS THEN
-        -- Обработка ошибок
-        apex_debug.error('Ошибка в Modal News Card Plugin: %s', SQLERRM);
-        htp.prn('<div class="apex-error">Ошибка инициализации плагина: ' || SQLERRM || '</div>');
-        RETURN l_result;
-END render_modal_news_card;
-```
-
-### 3.2 Указание функции рендеринга
-В поле **"Render Procedure or Function Name"** укажите: `render_modal_news_card`[1][5]
-
-## Шаг 4: Создание Custom Attributes
-
-В APEX 23.1 поддерживается **до 25 custom attributes** (увеличено с 15 в предыдущих версиях)[8][7][9]. Создадим основные атрибуты:
-
-### 4.1 Attribute 1: SQL запрос новостей
-- **Sequence**: 1
-- **Scope**: Component
-- **Prompt**: `SQL запрос новостей`
-- **Type**: Textarea
-- **Required**: Yes
-- **Default Value**: `SELECT id, title, content, publish_date, image_url FROM news WHERE status = 'PUBLISHED'`
-- **Help Text**: `SQL запрос для получения данных новостей. Обязательные колонки: ID, TITLE, CONTENT, PUBLISH_DATE, IMAGE_URL`
-
-### 4.2 Attribute 2: Ширина модального окна
-- **Sequence**: 2  
-- **Scope**: Component
-- **Prompt**: `Ширина модального окна (px)`
-- **Type**: Number
-- **Required**: No
-- **Default Value**: `600`
-- **Help Text**: `Ширина модального окна в пикселях`
-
-### 4.3 Attribute 3: Высота модального окна
-- **Sequence**: 3
-- **Scope**: Component  
-- **Prompt**: `Высота модального окна (px)`
-- **Type**: Number
-- **Required**: No
-- **Default Value**: `400`
-- **Help Text**: `Максимальная высота модального окна в пикселях`
-
-### 4.4 Attribute 4: Показать кнопку закрытия
-- **Sequence**: 4
-- **Scope**: Component
-- **Prompt**: `Показать кнопку закрытия`
-- **Type**: Yes/No
-- **Required**: No
-- **Default Value**: `Y`
-- **Help Text**: `Отображать кнопку закрытия (X) в углу модального окна`
-
-### 4.5 Attribute 5: Цвет фона (новая возможность в 23.1)
-- **Sequence**: 5
-- **Scope**: Component
-- **Prompt**: `Цвет фона`
-- **Type**: Text
-- **Required**: No
-- **Default Value**: `#ffffff`
-- **Help Text**: `Цвет фона модального окна в HEX формате`
-
-### 4.6 Attribute 6: Тип анимации (улучшенная поддержка в 23.1)
-- **Sequence**: 6
-- **Scope**: Component
-- **Prompt**: `Тип анимации`
-- **Type**: Select List
-- **Required**: No
-- **Default Value**: `fadeIn`
-- **List of Values**: `STATIC:fadeIn;Плавное появление,slideDown;Слайд вниз,zoomIn;Увеличение,none;Без анимации`
-- **Help Text**: `Тип анимации появления модального окна`
-
-## Шаг 5: Настройка группировки атрибутов (новое в APEX 23.1)
-
-В APEX 23.1 появилась возможность группировки custom attributes[8][7]. Создайте группы:
-
-### 5.1 Группа "Размеры"
-Объедините атрибуты 2 и 3 (ширина и высота) в группу "Размеры модального окна"
-
-### 5.2 Группа "Внешний вид" 
-Объедините атрибуты 4, 5 и 6 (кнопка закрытия, цвет фона, анимация) в группу "Внешний вид"
-
-## Шаг 6: Стандартные атрибуты
-
-В разделе **"Standard Attributes"** установите:
-- **Source SQL**: Checked (позволит использовать SQL запросы)
-- **Region Template**: Checked (для совместимости с темами)
-
-## Шаг 7: Создание плагина
-
-Нажмите кнопку **"Create Plug-in"** для сохранения базовой структуры.
-
-## Шаг 8: Добавление CSS файла
-
-### 8.1 Создание CSS файла
-1. В созданном плагине перейдите на вкладку **"Files"**
-2. Нажмите **"Create File"**
-3. **File Name**: `modal-news-card.css`
-4. **File Type**: CSS
-
-### 8.2 CSS код
-```css
-/* Modal News Card Plugin для APEX 23.1 */
-.apex-modal-overlay.apex-news-card-modal {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.6);
-    z-index: 9999;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    backdrop-filter: blur(2px);
-}
-
-.apex-news-card {
-    position: relative;
-    background: var(--ut-body-background-color, #ffffff);
-    border-radius: 8px;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
-    max-width: 90vw;
-    max-height: 85vh;
-    overflow-y: auto;
-    padding: 24px;
-    margin: 20px;
-    font-family: var(--ut-body-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
-    color: var(--ut-body-text-color, #333);
-    border: 1px solid var(--ut-component-border-color, #e0e0e0);
-}
-
-.apex-modal-close {
-    position: absolute;
-    top: 12px;
-    right: 12px;
-    background: var(--ut-button-background-color, #f8f9fa);
-    border: 1px solid var(--ut-button-border-color, #dee2e6);
-    border-radius: 50%;
-    width: 32px;
-    height: 32px;
-    font-size: 14px;
-    color: var(--ut-button-text-color, #6c757d);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s ease;
-    z-index: 10;
-}
-
-.apex-modal-close:hover {
-    background: var(--ut-button-hover-background-color, #e9ecef);
-    color: var(--ut-button-hover-text-color, #495057);
-    transform: scale(1.05);
-}
-
-.news-header {
-    margin-bottom: 20px;
-    border-bottom: 2px solid var(--ut-component-border-color, #e9ecef);
-    padding-bottom: 16px;
-}
-
-.news-title {
-    margin: 0 0 8px 0;
-    font-size: clamp(20px, 4vw, 28px);
-    font-weight: 600;
-    color: var(--ut-body-title-text-color, #212529);
-    line-height: 1.3;
-}
-
-.news-date {
-    color: var(--ut-body-text-muted-color, #6c757d);
-    font-size: 14px;
-    background: var(--ut-region-background-color, #f8f9fa);
-    padding: 4px 12px;
-    border-radius: 12px;
-    display: inline-block;
-}
-
-.news-content {
-    margin-bottom: 24px;
-}
-
-.news-image {
-    margin-bottom: 20px;
-    text-align: center;
-}
-
-.news-image img {
-    max-width: 100%;
-    height: auto;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
-.news-text {
-    font-size: 16px;
-    color: var(--ut-body-text-color, #495057);
-    line-height: 1.6;
-}
-
-.news-filters {
-    border-top: 2px solid var(--ut-component-border-color, #e9ecef);
-    padding-top: 20px;
-    margin-top: 20px;
-}
-
-.news-filters:empty {
-    display: none;
-}
-
-/* Темная тема для APEX 23.1 */
-[data-theme="dark"] .apex-news-card {
-    background: var(--ut-body-background-color, #1a1a1a);
-    color: var(--ut-body-text-color, #e9ecef);
-    border-color: var(--ut-component-border-color, #404040);
-}
-
-/* Адаптивность */
-@media (max-width: 768px) {
-    .apex-news-card {
-        margin: 10px;
-        padding: 20px;
-        max-width: 95vw;
-    }
+    -- Attribute 1: ID новости
+    wwv_flow_api.create_plugin_attribute(
+        p_id                      => wwv_flow_api.id(2),
+        p_plugin_id               => wwv_flow_api.id(1),
+        p_attribute_scope         => 'COMPONENT',
+        p_attribute_sequence      => 1,
+        p_display_sequence        => 10,
+        p_prompt                  => 'ID новости',
+        p_attribute_type          => 'TEXT',
+        p_is_required             => true,
+        p_display_length          => 30,
+        p_help_text               => 'Уникальный идентификатор новости (обязательное поле)'
+    );
     
-    .news-title {
-        font-size: 22px;
-    }
-}
-```
-
-## Шаг 9: Добавление JavaScript файла
-
-### 9.1 Создание JavaScript файла
-1. Нажмите **"Create File"** еще раз
-2. **File Name**: `modal-news-card.js`
-3. **File Type**: JavaScript
-
-### 9.2 JavaScript код
-```javascript
-/**
- * Modal News Card Plugin для Oracle APEX 23.1
- */
-window.modalNewsCard = window.modalNewsCard || {};
-
-modalNewsCard = {
-    instances: {},
-    currentInstance: null,
+    -- Attribute 2: Заголовок
+    wwv_flow_api.create_plugin_attribute(
+        p_id                      => wwv_flow_api.id(3),
+        p_plugin_id               => wwv_flow_api.id(1),
+        p_attribute_scope         => 'COMPONENT',
+        p_attribute_sequence      => 2,
+        p_display_sequence        => 20,
+        p_prompt                  => 'Заголовок новости',
+        p_attribute_type          => 'TEXT',
+        p_is_required             => true,
+        p_display_length          => 60,
+        p_help_text               => 'Заголовок новости для отображения на карточке'
+    );
     
-    /**
-     * Инициализация плагина
-     */
-    init: function(regionId, options) {
-        try {
-            const modal = document.getElementById(regionId + '_modal');
-            if (!modal) {
-                console.error('Modal element not found:', regionId + '_modal');
-                return;
-            }
-            
-            // Сохраняем настройки экземпляра
-            this.instances[regionId] = {
-                modal: modal,
-                options: Object.assign({
-                    width: 600,
-                    height: 400,
-                    backgroundColor: '#ffffff',
-                    animationType: 'fadeIn'
-                }, options || {})
-            };
-            
-            this.setupModal(regionId);
-            this.bindEvents(regionId);
-            
-            console.log('Modal News Card Plugin инициализирован для региона:', regionId);
-            
-        } catch (error) {
-            console.error('Ошибка инициализации Modal News Card Plugin:', error);
-        }
-    },
+    -- Attribute 3: URL изображения
+    wwv_flow_api.create_plugin_attribute(
+        p_id                      => wwv_flow_api.id(4),
+        p_plugin_id               => wwv_flow_api.id(1),
+        p_attribute_scope         => 'COMPONENT',
+        p_attribute_sequence      => 3,
+        p_display_sequence        => 30,
+        p_prompt                  => 'URL изображения',
+        p_attribute_type          => 'TEXT',
+        p_is_required             => false,
+        p_display_length          => 100,
+        p_help_text               => 'URL изображения новости (необязательно)'
+    );
     
-    /**
-     * Настройка модального окна
-     */
-    setupModal: function(regionId) {
-        const instance = this.instances[regionId];
-        if (!instance) return;
-        
-        const modalCard = instance.modal.querySelector('.apex-news-card');
-        if (modalCard) {
-            modalCard.style.maxWidth = instance.options.width + 'px';
-            modalCard.style.maxHeight = instance.options.height + 'px';
-            modalCard.style.backgroundColor = instance.options.backgroundColor;
-        }
-    },
+    -- Attribute 4: Дата публикации
+    wwv_flow_api.create_plugin_attribute(
+        p_id                      => wwv_flow_api.id(5),
+        p_plugin_id               => wwv_flow_api.id(1),
+        p_attribute_scope         => 'COMPONENT',
+        p_attribute_sequence      => 4,
+        p_display_sequence        => 40,
+        p_prompt                  => 'Дата публикации',
+        p_attribute_type          => 'TEXT',
+        p_is_required             => false,
+        p_display_length          => 30,
+        p_help_text               => 'Дата публикации новости в формате DD.MM.YYYY'
+    );
     
-    /**
-     * Привязка событий
-     */
-    bindEvents: function(regionId) {
-        const instance = this.instances[regionId];
-        if (!instance) return;
-        
-        const modal = instance.modal;
-        const closeBtn = modal.querySelector('.apex-modal-close');
-        
-        // Закрытие по кнопке X
-        if (closeBtn) {
-            closeBtn.addEventListener('click', () => this.close(regionId));
-        }
-        
-        // Закрытие по клику на overlay
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                this.close(regionId);
-            }
-        });
-        
-        // Закрытие по ESC
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && modal.style.display === 'flex') {
-                this.close(regionId);
-            }
-        });
-    },
+    -- Attribute 5: Категория
+    wwv_flow_api.create_plugin_attribute(
+        p_id                      => wwv_flow_api.id(6),
+        p_plugin_id               => wwv_flow_api.id(1),
+        p_attribute_scope         => 'COMPONENT',
+        p_attribute_sequence      => 5,
+        p_display_sequence        => 50,
+        p_prompt                  => 'Категория',
+        p_attribute_type          => 'TEXT',
+        p_is_required             => false,
+        p_display_length          => 30,
+        p_help_text               => 'Категория новости'
+    );
     
-    /**
-     * Открытие модального окна
-     */
-    open: function(regionId, newsData) {
-        const instance = this.instances[regionId];
-        if (!instance) {
-            console.error('Modal instance not found:', regionId);
-            return;
-        }
-        
-        this.currentInstance = regionId;
-        
-        if (newsData) {
-            this.populateCard(regionId, newsData);
-        }
-        
-        this.showModal(regionId);
-    },
+    -- Attribute 6: Краткое описание
+    wwv_flow_api.create_plugin_attribute(
+        p_id                      => wwv_flow_api.id(7),
+        p_plugin_id               => wwv_flow_api.id(1),
+        p_attribute_scope         => 'COMPONENT',
+        p_attribute_sequence      => 6,
+        p_display_sequence        => 60,
+        p_prompt                  => 'Краткое описание',
+        p_attribute_type          => 'TEXTAREA',
+        p_is_required             => false,
+        p_display_length          => 60,
+        p_max_length              => 500,
+        p_help_text               => 'Краткое описание новости для отображения на карточке'
+    );
     
-    /**
-     * Отображение модального окна
-     */
-    showModal: function(regionId) {
-        const instance = this.instances[regionId];
-        if (!instance) return;
-        
-        const modal = instance.modal;
-        modal.style.display = 'flex';
-        document.body.style.overflow = 'hidden';
-        
-        // Применяем анимацию
-        setTimeout(() => {
-            modal.style.opacity = '1';
-        }, 10);
-    },
+    -- Attribute 7: Автор
+    wwv_flow_api.create_plugin_attribute(
+        p_id                      => wwv_flow_api.id(8),
+        p_plugin_id               => wwv_flow_api.id(1),
+        p_attribute_scope         => 'COMPONENT',
+        p_attribute_sequence      => 7,
+        p_display_sequence        => 70,
+        p_prompt                  => 'Автор',
+        p_attribute_type          => 'TEXT',
+        p_is_required             => false,
+        p_display_length          => 40,
+        p_help_text               => 'Автор новости'
+    );
     
-    /**
-     * Закрытие модального окна
-     */
-    close: function(regionId) {
-        regionId = regionId || this.currentInstance;
-        if (!regionId) return;
-        
-        const instance = this.instances[regionId];
-        if (!instance) return;
-        
-        const modal = instance.modal;
-        modal.style.display = 'none';
-        document.body.style.overflow = '';
-        
-        this.currentInstance = null;
-        
-        // Событие закрытия для APEX
-        apex.event.trigger(document, 'modal-news-card-closed', {
-            regionId: regionId
-        });
-    },
+    -- Attribute 8: Ширина карточки (новое в 23.1)
+    wwv_flow_api.create_plugin_attribute(
+        p_id                      => wwv_flow_api.id(9),
+        p_plugin_id               => wwv_flow_api.id(1),
+        p_attribute_scope         => 'COMPONENT',
+        p_attribute_sequence      => 8,
+        p_display_sequence        => 80,
+        p_prompt                  => 'Ширина карточки (px)',
+        p_attribute_type          => 'NUMBER',
+        p_is_required             => false,
+        p_default_value           => '300',
+        p_display_length          => 10,
+        p_help_text               => 'Ширина карточки в пикселях для Multiple режима'
+    );
     
-    /**
-     * Заполнение карточки данными
-     */
-    populateCard: function(regionId, data) {
-        const instance = this.instances[regionId];
-        if (!instance) return;
-        
-        const modal = instance.modal;
-        
-        const titleEl = modal.querySelector('#news-title-' + regionId);
-        if (titleEl) titleEl.textContent = data.title || '';
-        
-        const dateEl = modal.querySelector('#news-date-' + regionId);
-        if (dateEl) dateEl.textContent = data.publish_date || '';
-        
-        const textEl = modal.querySelector('#news-text-' + regionId);
-        if (textEl) textEl.innerHTML = data.content || '';
-        
-        const imageContainer = modal.querySelector('#news-image-' + regionId);
-        const img = imageContainer ? imageContainer.querySelector('img') : null;
-        
-        if (img && data.image_url) {
-            img.src = data.image_url;
-            img.alt = data.title || '';
-            imageContainer.style.display = 'block';
-        } else if (imageContainer) {
-            imageContainer.style.display = 'none';
-        }
-    }
-};
-```
+    -- Attribute 9: Высота изображения (новое в 23.1)
+    wwv_flow_api.create_plugin_attribute(
+        p_id                      => wwv_flow_api.id(10),
+        p_plugin_id               => wwv_flow_api.id(1),
+        p_attribute_scope         => 'COMPONENT',
+        p_attribute_sequence      => 9,
+        p_display_sequence        => 90,
+        p_prompt                  => 'Высота изображения (px)',
+        p_attribute_type          => 'NUMBER',
+        p_is_required             => false,
+        p_default_value           => '200',
+        p_display_length          => 10,
+        p_help_text               => 'Высота изображения на карточке в пикселях'
+    );
+    
+    -- Attribute 10: Тема карточки
+    wwv_flow_api.create_plugin_attribute(
+        p_id                      => wwv_flow_api.id(11),
+        p_plugin_id               => wwv_flow_api.id(1),
+        p_attribute_scope         => 'COMPONENT',
+        p_attribute_sequence      => 10,
+        p_display_sequence        => 100,
+        p_prompt                  => 'Тема карточки',
+        p_attribute_type          => 'SELECT LIST',
+        p_is_required             => false,
+        p_default_value           => 'light',
+        p_lov_type                => 'STATIC',
+        p_lov_value               => 'STATIC:light;Светлая тема,dark;Темная тема,colored;Цветная тема',
+        p_help_text               => 'Цветовая схема карточки'
+    );
 
-## Шаг 10: Обновление Render Function
+end;
+/
 
-Вернитесь к редактированию плагина и обновите render function для подключения CSS и JavaScript:
+-- Создание CSS файла
+begin
+    wwv_flow_api.create_plugin_file(
+        p_id        => wwv_flow_api.id(12),
+        p_plugin_id => wwv_flow_api.id(1),
+        p_file_name => 'modal-news-card.css',
+        p_mime_type => 'text/css',
+        p_file_charset => 'utf-8',
+        p_file_content => wwv_flow_utilities.clob_to_blob(
+'/* Modal News Card Template Component CSS для APEX 23.1 */' || chr(10) ||
+'/* Поддержка Universal Theme и адаптивности */' || chr(10) ||
+'' || chr(10) ||
+'/* Контейнер карточек */' || chr(10) ||
+'.modal-news-cards-container {' || chr(10) ||
+'  display: grid;' || chr(10) ||
+'  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));' || chr(10) ||
+'  gap: 20px;' || chr(10) ||
+'  padding: 20px 0;' || chr(10) ||
+'}' || chr(10) ||
+'' || chr(10) ||
+'/* Карточка новости */' || chr(10) ||
+'.modal-news-card {' || chr(10) ||
+'  background: var(--ut-body-background-color, #ffffff);' || chr(10) ||
+'  border-radius: 12px;' || chr(10) ||
+'  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);' || chr(10) ||
+'  overflow: hidden;' || chr(10) ||
+'  cursor: pointer;' || chr(10) ||
+'  transition: all 0.3s ease;' || chr(10) ||
+'  border: 1px solid var(--ut-component-border-color, #e0e0e0);' || chr(10) ||
+'  position: relative;' || chr(10) ||
+'}' || chr(10) ||
+'' || chr(10) ||
+'.modal-news-card:hover {' || chr(10) ||
+'  transform: translateY(-5px);' || chr(10) ||
+'  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);' || chr(10) ||
+'}' || chr(10) ||
+'' || chr(10) ||
+'/* Изображение карточки */' || chr(10) ||
+'.news-card-image {' || chr(10) ||
+'  position: relative;' || chr(10) ||
+'  height: 200px;' || chr(10) ||
+'  overflow: hidden;' || chr(10) ||
+'}' || chr(10) ||
+'' || chr(10) ||
+'.news-card-image img {' || chr(10) ||
+'  width: 100%;' || chr(10) ||
+'  height: 100%;' || chr(10) ||
+'  object-fit: cover;' || chr(10) ||
+'  transition: transform 0.3s ease;' || chr(10) ||
+'}' || chr(10) ||
+'' || chr(10) ||
+'.modal-news-card:hover .news-card-image img {' || chr(10) ||
+'  transform: scale(1.05);' || chr(10) ||
+'}' || chr(10) ||
+'' || chr(10) ||
+'.news-card-overlay {' || chr(10) ||
+'  position: absolute;' || chr(10) ||
+'  top: 0;' || chr(10) ||
+'  right: 0;' || chr(10) ||
+'  bottom: 0;' || chr(10) ||
+'  left: 0;' || chr(10) ||
+'  background: rgba(0, 0, 0, 0.4);' || chr(10) ||
+'  display: flex;' || chr(10) ||
+'  align-items: center;' || chr(10) ||
+'  justify-content: center;' || chr(10) ||
+'  opacity: 0;' || chr(10) ||
+'  transition: opacity 0.3s ease;' || chr(10) ||
+'}' || chr(10) ||
+'' || chr(10) ||
+'.modal-news-card:hover .news-card-overlay {' || chr(10) ||
+'  opacity: 1;' || chr(10) ||
+'}' || chr(10) ||
+'' || chr(10) ||
+'.news-expand-icon {' || chr(10) ||
+'  color: white;' || chr(10) ||
+'  font-size: 24px;' || chr(10) ||
+'}' || chr(10) ||
+'' || chr(10) ||
+'/* Содержимое карточки */' || chr(10) ||
+'.news-card-content {' || chr(10) ||
+'  padding: 20px;' || chr(10) ||
+'}' || chr(10) ||
+'' || chr(10) ||
+'.news-card-title {' || chr(10) ||
+'  font-size: 18px;' || chr(10) ||
+'  font-weight: 600;' || chr(10) ||
+'  margin: 0 0 12px 0;' || chr(10) ||
+'  color: var(--ut-body-title-text-color, #212529);' || chr(10) ||
+'  line-height: 1.4;' || chr(10) ||
+'  display: -webkit-box;' || chr(10) ||
+'  -webkit-line-clamp: 2;' || chr(10) ||
+'  -webkit-box-orient: vertical;' || chr(10) ||
+'  overflow: hidden;' || chr(10) ||
+'}' || chr(10) ||
+'' || chr(10) ||
+'.news-card-meta {' || chr(10) ||
+'  display: flex;' || chr(10) ||
+'  flex-wrap: wrap;' || chr(10) ||
+'  gap: 15px;' || chr(10) ||
+'  margin-bottom: 12px;' || chr(10) ||
+'  font-size: 13px;' || chr(10) ||
+'  color: var(--ut-body-text-muted-color, #6c757d);' || chr(10) ||
+'}' || chr(10) ||
+'' || chr(10) ||
+'.news-date, .news-category {' || chr(10) ||
+'  display: flex;' || chr(10) ||
+'  align-items: center;' || chr(10) ||
+'  gap: 6px;' || chr(10) ||
+'}' || chr(10) ||
+'' || chr(10) ||
+'.news-category {' || chr(10) ||
+'  background: var(--ut-region-accent-background-color, #e3f2fd);' || chr(10) ||
+'  color: var(--ut-region-accent-text-color, #1976d2);' || chr(10) ||
+'  padding: 4px 8px;' || chr(10) ||
+'  border-radius: 12px;' || chr(10) ||
+'  font-size: 12px;' || chr(10) ||
+'}' || chr(10) ||
+'' || chr(10) ||
+'.news-card-excerpt {' || chr(10) ||
+'  font-size: 14px;' || chr(10) ||
+'  color: var(--ut-body-text-color, #495057);' || chr(10) ||
+'  line-height: 1.5;' || chr(10) ||
+'  margin: 0 0 12px 0;' || chr(10) ||
+'  display: -webkit-box;' || chr(10) ||
+'  -webkit-line-clamp: 3;' || chr(10) ||
+'  -webkit-box-orient: vertical;' || chr(10) ||
+'  overflow: hidden;' || chr(10) ||
+'}' || chr(10) ||
+'' || chr(10) ||
+'.news-card-author {' || chr(10) ||
+'  font-size: 13px;' || chr(10) ||
+'  color: var(--ut-body-text-muted-color, #6c757d);' || chr(10) ||
+'  display: flex;' || chr(10) ||
+'  align-items: center;' || chr(10) ||
+'  gap: 6px;' || chr(10) ||
+'  margin-bottom: 12px;' || chr(10) ||
+'}' || chr(10) ||
+'' || chr(10) ||
+'.news-card-actions {' || chr(10) ||
+'  margin-top: 15px;' || chr(10) ||
+'  padding-top: 15px;' || chr(10) ||
+'  border-top: 1px solid var(--ut-component-border-color, #e9ecef);' || chr(10) ||
+'}' || chr(10) ||
+'' || chr(10) ||
+'/* Модальное окно */' || chr(10) ||
+'.news-modal {' || chr(10) ||
+'  position: fixed;' || chr(10) ||
+'  top: 0;' || chr(10) ||
+'  left: 0;' || chr(10) ||
+'  width: 100%;' || chr(10) ||
+'  height: 100%;' || chr(10) ||
+'  background-color: rgba(0, 0, 0, 0.7);' || chr(10) ||
+'  z-index: 10000;' || chr(10) ||
+'  display: flex;' || chr(10) ||
+'  align-items: center;' || chr(10) ||
+'  justify-content: center;' || chr(10) ||
+'  padding: 20px;' || chr(10) ||
+'  backdrop-filter: blur(3px);' || chr(10) ||
+'}' || chr(10) ||
+'' || chr(10) ||
+'.news-modal-dialog {' || chr(10) ||
+'  background: var(--ut-body-background-color, #ffffff);' || chr(10) ||
+'  border-radius: 12px;' || chr(10) ||
+'  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.3);' || chr(10) ||
+'  max-width: 800px;' || chr(10) ||
+'  max-height: 90vh;' || chr(10) ||
+'  width: 100%;' || chr(10) ||
+'  display: flex;' || chr(10) ||
+'  flex-direction: column;' || chr(10) ||
+'  animation: modalSlideIn 0.3s ease-out;' || chr(10) ||
+'}' || chr(10) ||
+'' || chr(10) ||
+'@keyframes modalSlideIn {' || chr(10) ||
+'  from {' || chr(10) ||
+'    opacity: 0;' || chr(10) ||
+'    transform: translateY(-20px) scale(0.95);' || chr(10) ||
+'  }' || chr(10) ||
+'  to {' || chr(10) ||
+'    opacity: 1;' || chr(10) ||
+'    transform: translateY(0) scale(1);' || chr(10) ||
+'  }' || chr(10) ||
+'}' || chr(10) ||
+'' || chr(10) ||
+'.news-modal-header {' || chr(10) ||
+'  display: flex;' || chr(10) ||
+'  align-items: center;' || chr(10) ||
+'  justify-content: space-between;' || chr(10) ||
+'  padding: 20px 24px;' || chr(10) ||
+'  border-bottom: 1px solid var(--ut-component-border-color, #e9ecef);' || chr(10) ||
+'}' || chr(10) ||
+'' || chr(10) ||
+'.news-modal-title {' || chr(10) ||
+'  font-size: 20px;' || chr(10) ||
+'  font-weight: 600;' || chr(10) ||
+'  margin: 0;' || chr(10) ||
+'  color: var(--ut-body-title-text-color, #212529);' || chr(10) ||
+'}' || chr(10) ||
+'' || chr(10) ||
+'.news-modal-close {' || chr(10) ||
+'  background: none;' || chr(10) ||
+'  border: none;' || chr(10) ||
+'  font-size: 18px;' || chr(10) ||
+'  color: var(--ut-body-text-muted-color, #6c757d);' || chr(10) ||
+'  cursor: pointer;' || chr(10) ||
+'  padding: 8px;' || chr(10) ||
+'  border-radius: 50%;' || chr(10) ||
+'  transition: all 0.2s ease;' || chr(10) ||
+'  width: 36px;' || chr(10) ||
+'  height: 36px;' || chr(10) ||
+'  display: flex;' || chr(10) ||
+'  align-items: center;' || chr(10) ||
+'  justify-content: center;' || chr(10) ||
+'}' || chr(10) ||
+'' || chr(10) ||
+'.news-modal-close:hover {' || chr(10) ||
+'  background: var(--ut-button-hover-background-color, #f8f9fa);' || chr(10) ||
+'  color: var(--ut-button-hover-text-color, #495057);' || chr(10) ||
+'}' || chr(10) ||
+'' || chr(10) ||
+'.news-modal-body {' || chr(10) ||
+'  padding: 24px;' || chr(10) ||
+'  overflow-y: auto;' || chr(10) ||
+'  flex: 1;' || chr(10) ||
+'}' || chr(10) ||
+'' || chr(10) ||
+'.news-modal-footer {' || chr(10) ||
+'  padding: 16px 24px;' || chr(10) ||
+'  border-top: 1px solid var(--ut-component-border-color, #e9ecef);' || chr(10) ||
+'  text-align: right;' || chr(10) ||
+'}' || chr(10) ||
+'' || chr(10) ||
+'.news-modal-loading {' || chr(10) ||
+'  text-align: center;' || chr(10) ||
+'  padding: 40px 20px;' || chr(10) ||
+'  color: var(--ut-body-text-muted-color, #6c757d);' || chr(10) ||
+'}' || chr(10) ||
+'' || chr(10) ||
+'/* Адаптивность */' || chr(10) ||
+'@media (max-width: 768px) {' || chr(10) ||
+'  .modal-news-cards-container {' || chr(10) ||
+'    grid-template-columns: 1fr;' || chr(10) ||
+'    padding: 10px 0;' || chr(10) ||
+'    gap: 15px;' || chr(10) ||
+'  }' || chr(10) ||
+'  ' || chr(10) ||
+'  .news-modal {' || chr(10) ||
+'    padding: 10px;' || chr(10) ||
+'  }' || chr(10) ||
+'  ' || chr(10) ||
+'  .news-modal-dialog {' || chr(10) ||
+'    max-height: 95vh;' || chr(10) ||
+'  }' || chr(10) ||
+'  ' || chr(10) ||
+'  .news-modal-header, .news-modal-body, .news-modal-footer {' || chr(10) ||
+'    padding: 16px;' || chr(10) ||
+'  }' || chr(10) ||
+'}' || chr(10) ||
+'' || chr(10) ||
+'/* Темная тема для APEX 23.1 */' || chr(10) ||
+'[data-theme="dark"] .modal-news-card {' || chr(10) ||
+'  background: var(--ut-body-background-color, #1a1a1a);' || chr(10) ||
+'  border-color: var(--ut-component-border-color, #404040);' || chr(10) ||
+'}' || chr(10) ||
+'' || chr(10) ||
+'[data-theme="dark"] .news-modal-dialog {' || chr(10) ||
+'  background: var(--ut-body-background-color, #1a1a1a);' || chr(10) ||
+'}' || chr(10) ||
+'' || chr(10) ||
+'/* Состояние загрузки */' || chr(10) ||
+'.apex-loading-indicator {' || chr(10) ||
+'  text-align: center;' || chr(10) ||
+'  padding: 40px 20px;' || chr(10) ||
+'  color: var(--ut-body-text-muted-color, #6c757d);' || chr(10) ||
+'}' || chr(10) ||
+'' || chr(10) ||
+'.apex-loading-indicator .fa-spinner {' || chr(10) ||
+'  font-size: 32px;' || chr(10) ||
+'  color: var(--ut-accent-color, #007bff);' || chr(10) ||
+'  margin-bottom: 10px;' || chr(10) ||
+'}'
+        )
+    );
+end;
+/
 
-```sql
--- В конце функции render_modal_news_card, перед RETURN l_result добавьте:
+-- Создание JavaScript файла  
+begin
+    wwv_flow_api.create_plugin_file(
+        p_id        => wwv_flow_api.id(13),
+        p_plugin_id => wwv_flow_api.id(1),
+        p_file_name => 'modal-news-card.js',
+        p_mime_type => 'application/javascript',
+        p_file_charset => 'utf-8',
+        p_file_content => wwv_flow_utilities.clob_to_blob(
+'/**' || chr(10) ||
+' * Modal News Card Template Component для Oracle APEX 23.1' || chr(10) ||
+' * Совместимость с новыми возможностями версии 23.1' || chr(10) ||
+' */' || chr(10) ||
+'window.modalNewsCard = window.modalNewsCard || {};' || chr(10) ||
+'' || chr(10) ||
+'/**' || chr(10) ||
+' * Открытие модального окна с новостью' || chr(10) ||
+' */' || chr(10) ||
+'window.openNewsModal = function(newsId, cardElement) {' || chr(10) ||
+'    try {' || chr(10) ||
+'        // Находим регион по элементу карточки' || chr(10) ||
+'        const container = cardElement.closest(''.modal-news-cards-container'');' || chr(10) ||
+'        if (!container) {' || chr(10) ||
+'            console.error(''Не найден контейнер карточек'');' || chr(10) ||
+'            return;' || chr(10) ||
+'        }' || chr(10) ||
+'        ' || chr(10) ||
+'        const regionId = container.id.replace(''_container'', '''');' || chr(10) ||
+'        const modal = document.getElementById(regionId + ''_modal'');' || chr(10) ||
+'        ' || chr(10) ||
+'        if (!modal) {' || chr(10) ||
+'            console.error(''Модальное окно не найдено:'', regionId + ''_modal'');' || chr(10) ||
+'            return;' || chr(10) ||
+'        }' || chr(10) ||
+'        ' || chr(10) ||
+'        // Показываем модальное окно' || chr(10) ||
+'        modal.style.display = ''flex'';' || chr(10) ||
+'        document.body.style.overflow = ''hidden'';' || chr(10) ||
+'        ' || chr(10) ||
+'        // Загружаем контент новости' || chr(10) ||
+'        loadNewsContent(regionId, newsId, cardElement);' || chr(10) ||
+'        ' || chr(10) ||
+'        // Событие для APEX' || chr(10) ||
+'        apex.event.trigger(document, ''modal-news-opened'', {' || chr(10) ||
+'            regionId: regionId,' || chr(10) ||
+'            newsId: newsId' || chr(10) ||
+'        });' || chr(10) ||
+'        ' || chr(10) ||
+'    } catch (error) {' || chr(10) ||
+'        console.error(''Ошибка открытия модального окна:'', error);' || chr(10) ||
+'    }' || chr(10) ||
+'};' || chr(10) ||
+'' || chr(10) ||
+'/**' || chr(10) ||
+' * Закрытие модального окна' || chr(10) ||
+' */' || chr(10) ||
+'window.closeNewsModal = function(regionId) {' || chr(10) ||
+'    try {' || chr(10) ||
+'        const modal = document.getElementById(regionId + ''_modal'');' || chr(10) ||
+'        if (modal) {' || chr(10) ||
+'            modal.style.display = ''none'';' || chr(10) ||
+'            document.body.style.overflow = '''';' || chr(10) ||
+'            ' || chr(10) ||
+'            // Событие для APEX' || chr(10) ||
+'            apex.event.trigger(document, ''modal-news-closed'', {' || chr(10) ||
+'                regionId: regionId' || chr(10) ||
+'            });' || chr(10) ||
+'        }' || chr(10) ||
+'    } catch (error) {' || chr(10) ||
+'        console.error(''Ошибка закрытия модального окна:'', error);' || chr(10) ||
+'    }' || chr(10) ||
+'};' || chr(10) ||
+'' || chr(10) ||
+'/**' || chr(10) ||
+' * Загрузка содержимого новости' || chr(10) ||
+' */' || chr(10) ||
+'function loadNewsContent(regionId, newsId, cardElement) {' || chr(10) ||
+'    const modalTitle = document.getElementById(regionId + ''_modal_title'');' || chr(10) ||
+'    const modalBody = document.getElementById(regionId + ''_modal_body'');' || chr(10) ||
+'    ' || chr(10) ||
+'    if (!modalBody) return;' || chr(10) ||
+'    ' || chr(10) ||
+'    // Показываем загрузку' || chr(10) ||
+'    modalBody.innerHTML = `' || chr(10) ||
+'        <div class="news-modal-loading">' || chr(10) ||
+'            <span class="fa fa-spinner fa-pulse"></span>' || chr(10) ||
+'            Загрузка содержимого...' || chr(10) ||
+'        </div>' || chr(10) ||
+'    `;' || chr(10) ||
+'    ' || chr(10) ||
+'    // Получаем данные из карточки' || chr(10) ||
+'    const title = cardElement.querySelector(''.news-card-title'')?.textContent || ''Новость'';' || chr(10) ||
+'    const excerpt = cardElement.querySelector(''.news-card-excerpt'')?.textContent || '''';' || chr(10) ||
+'    const author = cardElement.querySelector(''.news-card-author'')?.textContent || '''';' || chr(10) ||
+'    const date = cardElement.querySelector(''.news-date'')?.textContent || '''';' || chr(10) ||
+'    const category = cardElement.querySelector(''.news-category'')?.textContent || '''';' || chr(10) ||
+'    const imageUrl = cardElement.querySelector(''.news-card-image img'')?.src || '''';' || chr(10) ||
+'    ' || chr(10) ||
+'    // Устанавливаем заголовок' || chr(10) ||
+'    if (modalTitle) {' || chr(10) ||
+'        modalTitle.textContent = title;' || chr(10) ||
+'    }' || chr(10) ||
+'    ' || chr(10) ||
+'    // Загружаем полный контент через AJAX' || chr(10) ||
+'    apex.server.process(''LOAD_NEWS_CONTENT'', {' || chr(10) ||
+'        x01: newsId,' || chr(10) ||
+'        x02: regionId' || chr(10) ||
+'    }, {' || chr(10) ||
+'        success: function(data) {' || chr(10) ||
+'            displayNewsContent(modalBody, data, {' || chr(10) ||
+'                title: title,' || chr(10) ||
+'                excerpt: excerpt,' || chr(10) ||
+'                author: author,' || chr(10) ||
+'                date: date,' || chr(10) ||
+'                category: category,' || chr(10) ||
+'                imageUrl: imageUrl' || chr(10) ||
+'            });' || chr(10) ||
+'        },' || chr(10) ||
+'        error: function(xhr, textStatus, errorThrown) {' || chr(10) ||
+'            console.error(''Ошибка загрузки содержимого новости:'', errorThrown);' || chr(10) ||
+'            modalBody.innerHTML = `' || chr(10) ||
+'                <div class="apex-error-message">' || chr(10) ||
+'                    <span class="fa fa-exclamation-triangle"></span>' || chr(10) ||
+'                    Ошибка загрузки содержимого: ${errorThrown}' || chr(10) ||
+'                </div>' || chr(10) ||
+'            `;' || chr(10) ||
+'        }' || chr(10) ||
+'    });' || chr(10) ||
+'}' || chr(10) ||
+'' || chr(10) ||
+'/**' || chr(10) ||
+' * Отображение содержимого новости' || chr(10) ||
+' */' || chr(10) ||
+'function displayNewsContent(container, data, fallbackData) {' || chr(10) ||
+'    const newsData = data || fallbackData;' || chr(10) ||
+'    ' || chr(10) ||
+'    const html = `' || chr(10) ||
+'        <div class="news-modal-content">' || chr(10) ||
+'            ${newsData.imageUrl ? `' || chr(10) ||
+'                <div class="news-modal-image">' || chr(10) ||
+'                    <img src="${newsData.imageUrl}" alt="${newsData.title}" />' || chr(10) ||
+'                </div>' || chr(10) ||
+'            ` : ''''} ' || chr(10) ||
+'            ' || chr(10) ||
+'            <div class="news-modal-meta">' || chr(10) ||
+'                ${newsData.date ? `<span class="news-date"><span class="fa fa-calendar"></span> ${newsData.date}</span>` : ''''} ' || chr(10) ||
+'                ${newsData.category ? `<span class="news-category"><span class="fa fa-tag"></span> ${newsData.category}</span>` : ''''} ' || chr(10) ||
+'                ${newsData.author ? `<span class="news-author"><span class="fa fa-user"></span> ${newsData.author}</span>` : ''''} ' || chr(10) ||
+'            </div>' || chr(10) ||
+'            ' || chr(10) ||
+'            <div class="news-modal-text">' || chr(10) ||
+'                ${newsData.content || newsData.excerpt || ''Содержимое новости недоступно.''} ' || chr(10) ||
+'            </div>' || chr(10) ||
+'        </div>' || chr(10) ||
+'    `;' || chr(10) ||
+'    ' || chr(10) ||
+'    container.innerHTML = html;' || chr(10) ||
+'}' || chr(10) ||
+'' || chr(10) ||
+'// Инициализация при загрузке страницы' || chr(10) ||
+'document.addEventListener(''DOMContentLoaded'', function() {' || chr(10) ||
+'    // Закрытие по клику на overlay' || chr(10) ||
+'    document.addEventListener(''click'', function(e) {' || chr(10) ||
+'        if (e.target.classList.contains(''news-modal'')) {' || chr(10) ||
+'            const modal = e.target;' || chr(10) ||
+'            const regionId = modal.id.replace(''_modal'', '''');' || chr(10) ||
+'            closeNewsModal(regionId);' || chr(10) ||
+'        }' || chr(10) ||
+'    });' || chr(10) ||
+'    ' || chr(10) ||
+'    // Закрытие по ESC' || chr(10) ||
+'    document.addEventListener(''keydown'', function(e) {' || chr(10) ||
+'        if (e.key === ''Escape'') {' || chr(10) ||
+'            const openModal = document.querySelector(''.news-modal[style*="flex"]'');' || chr(10) ||
+'            if (openModal) {' || chr(10) ||
+'                const regionId = openModal.id.replace(''_modal'', '''');' || chr(10) ||
+'                closeNewsModal(regionId);' || chr(10) ||
+'            }' || chr(10) ||
+'        }' || chr(10) ||
+'    });' || chr(10) ||
+'    ' || chr(10) ||
+'    console.log(''Modal News Card Template Component загружен'');' || chr(10) ||
+'});'
+        )
+    );
+end;
+/
 
--- Добавление CSS файлов
-apex_css.add_file(
-    p_name      => 'modal-news-card',
-    p_directory => p_plugin.file_prefix
-);
+begin
+    wwv_flow_api.import_end(p_auto_install_sup_obj => false, p_is_component_import => true);
+    commit;
+end;
+/
 
--- Добавление JavaScript файлов  
-apex_javascript.add_library(
-    p_name      => 'modal-news-card',
-    p_directory => p_plugin.file_prefix
-);
+prompt
+prompt ========================================================================
+prompt Modal News Card Template Component успешно установлен!
+prompt ========================================================================
+prompt
+prompt ВАЖНЫЕ ПРИМЕЧАНИЯ:
+prompt 1. Это Template Component (не Region Plugin)
+prompt 2. Поддерживает режимы Single и Multiple 
+prompt 3. Использует Template Directives для условной логики
+prompt 4. Полностью совместим с Universal Theme
+prompt 5. Адаптивный дизайн для всех устройств
+prompt 6. Поддержка темной темы APEX 23.1
+prompt
+prompt КАК ИСПОЛЬЗОВАТЬ:
+prompt 1. Создайте регион типа "Modal News Card"
+prompt 2. Укажите SQL запрос с колонками: ID, TITLE, IMAGE_URL, PUBLISH_DATE, CATEGORY, EXCERPT, AUTHOR
+prompt 3. Настройте атрибуты в Page Designer
+prompt 4. Создайте AJAX процесс LOAD_NEWS_CONTENT (опционально)
+prompt
+prompt ПРИМЕР SQL ЗАПРОСА:
+prompt SELECT 
+prompt   id,
+prompt   title, 
+prompt   image_url,
+prompt   TO_CHAR(publish_date, 'DD.MM.YYYY') as publish_date,
+prompt   category,
+prompt   SUBSTR(content, 1, 200) || '...' as excerpt,
+prompt   author
+prompt FROM news 
+prompt WHERE status = 'PUBLISHED' 
+prompt ORDER BY publish_date DESC
+prompt
+prompt ========================================================================
 
--- Инициализация JavaScript с передачей параметров
-apex_javascript.add_onload_code(
-    p_code => 'modalNewsCard.init("' || l_region_id || '", {' ||
-              'width: ' || l_modal_width || ',' ||
-              'height: ' || l_modal_height || ',' ||
-              'backgroundColor: "' || l_bg_color || '",' ||
-              'animationType: "' || l_animation || '"' ||
-              '});'
-);
-```
-
-## Шаг 11: Тестирование плагина
-
-### 11.1 Создание тестовой страницы
-1. Создайте новую страницу в вашем приложении
-2. Добавьте регион
-3. В поле **"Type"** найдите в разделе **"Application Components"** ваш плагин **"Modal News Card"**[5]
-4. Настройте атрибуты плагина в секции **"Attributes"**
-
-### 11.2 Тестовый вызов
-Добавьте на страницу кнопку со следующим JavaScript кодом:
-```javascript
-modalNewsCard.open('YOUR_REGION_ID', {
-    title: 'Тестовая новость',
-    content: 'Это тестовое содержимое модального окна',
-    publish_date: '29.07.2025',
-    image_url: ''
-});
-```
-
-## Особенности APEX 23.1, учтенные в реализации
-
-### 1. **Расширенные Custom Attributes**
-Поддержка до 25 атрибутов вместо 15 в предыдущих версиях[8][7][9]
-
-### 2. **Группировка атрибутов**
-Новая возможность группировки custom attributes для лучшей организации[8][7]
-
-### 3. **CSS переменные Universal Theme**
-Использование CSS переменных для совместимости с темной темой и другими вариантами Universal Theme[6]
-
-### 4. **Улучшенная отладка**
-Использование `apex_plugin_util.debug_region()` для лучшей диагностики[10]
-
-### 5. **Совместимость с новым JavaScript API**
-Корректная работа с обновленным JavaScript API в APEX 23.1[11]
-
-Теперь у вас есть полнофункциональный плагин модального окна, созданный с учетом всех особенностей Oracle APEX 23.1!
-
-Цитаты:
-[1] Building an Oracle APEX Plugin: A Deep Dive, part 1 - Novoshore https://www.novoshore.com/2025/03/17/how-to-create-an-oracle-apex-plugin-step-by-step-guide-with-code-examples/
-[2] 19.2 Implementing Plug-ins - Oracle Help Center https://docs.oracle.com/en/database/oracle/apex/23.1/htmdb/implementing-plug-ins.html
-[3] Creating an APEX Process Plugin https://ebs-apex.hashnode.dev/creating-an-apex-process-plugin
-[4] Создаем плагин региона для Oracle Application Express - Habr https://habr.com/ru/articles/275619/
-[5] Creating a Region Plug-in with an AJAX handler in #orclapex https://www.youtube.com/watch?v=0XO0sDkMZGk
-[6] Introduction to Template Components in Oracle APEX 23.1 https://hartenfeller.dev/blog/oracle-apex-template-components-introduction
-[7] What's New in Oracle APEX 23.1 https://apex.oracle.com/en/platform/features/whats-new-231/
-[8] [PDF] Oracle APEX 23.1 - New Features https://www.oracle.com/a/otn/docs/apex-231-new-features.pdf
-[9] Release Notes - Oracle APEX https://apex.oracle.com/en/learn/documentation/release-notes/
-[10] DEBUG_REGION Procedure Signature 2 - Oracle Help Center https://docs.oracle.com/en/database/oracle/apex/23.1/aeapi/DEBUG_REGION-Procedure-Signature-2.html
-[11] JSDoc: Interface: region https://docs.oracle.com/en/database/oracle/apex/23.1/aexjs/region.html
-[12] selected_image_6179373999777463646.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/72242679/d24bc3b0-d85a-47d3-b974-705ad03ae606/selected_image_6179373999777463646.jpg?AWSAccessKeyId=ASIA2F3EMEYEV2T3FOYT&Signature=iuC8pzaNKw0Bb0YLA5TVsvdHmZU%3D&x-amz-security-token=IQoJb3JpZ2luX2VjEHIaCXVzLWVhc3QtMSJHMEUCIFmNLuzLrY6xBxIHywNrBPYIOkoUdYpnRHkZIarvQLM8AiEApxv8xC9GlPB7Ql8FgBBxSuR5KfGYekOL8zSrRv0na4sq%2BgQIm%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FARABGgw2OTk3NTMzMDk3MDUiDLsyNxx2XysBDLqN2SrOBF8BKomAbWNazdySEBFsUqvMpNi98CfoFy%2FV4qv0dAt%2B7CDzqTVp5bjA33nH40XkOSFTAJgDr8hh9N%2F5OO3Sa2k9AkKyw1k4QGpgIkAqRU%2BVXWAVeCX5XEOlxJBnoaZqJDaVTAIDyNDXrEDE1ZVWIYSGi9Le75Ib%2FNOtR33SG95jSwXVYihe7uAlEB2QH4aAoGuUvtLOhZg9SzNCUJ5SKcC8fzBea%2F0%2FOY8u759KuSxXKiW4vLRzUBHhT2WYEpSX6jecW24dHrxSRIP05g%2FgKBZckRCgnsXhh8aNmZStYr18gdMvUabeX%2Bi6Wc2MaUSAV%2FURBSrJ%2BgUUahxR6t8iS0wg1KnS%2FHFDAPuUxkLdS5lUUp6ZxLOljb0zQ5XjMCUy%2BB4FilsZkItoXtQv2MI8qB86epG4usfRHw7X8BQrraE38GO86%2BrrMf%2FfGtjmIH%2F9C3okCfCzJD2VR6Ek21vFNGnQs9kgtxB1tPC4UnA7sdzvwBJl8yhnmMfqnZxtiUHPx8aKpIigZPWQpVJHv9nVOZbSYl4D2syNhLiDiQsCVBm%2B%2F%2FsWZzB9csdS0NKA9uPlYsbY0DczwkAe21g%2BvJoPdK3i2vHOTODibfJjkmI2YkmYOb2a4KCHrw1hgSdJOCxEWUsB77YNinu5q993h6mAcMsWPBbNM%2BI1LQaEUzXAjWMZJUdfraEwS28oggMoHxbVp5qSsxynxQKLIQV%2FCSguiF4Kfya7GaZjTKxHG%2BxmmNTjRYMN%2BPQQXd15uAUTjUwt1UHy4LBXN2jWQkz%2Fc%2FJ2MKDNoMQGOpoB6I7FGWFXrhqOyZmWWzXj0q3PFPc87tc8GZReARCe1yUZD0MOyLF2KZipykGBFlzEJa0gIbr9AlkXvov%2FqRsDU8e%2FSJzUiCmnQQK74PJlh5xueMwijbjsMJeJExKOTafapwFelMySalx7oAYzz3vE6JI2cvIEMhZB25UAGLdLtjGFuF1xyr3LdNZv3KaEbufXlQ628l%2B5f0%2BA2A%3D%3D&Expires=1753755160
-[13] selected_image_4941091078929342760.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/72242679/667a44a9-226d-4048-9b1d-7e56bcb00199/selected_image_4941091078929342760.jpg?AWSAccessKeyId=ASIA2F3EMEYEV2T3FOYT&Signature=pXnCWqMcUp%2BVF9TEG%2Bg8BPRJE7Q%3D&x-amz-security-token=IQoJb3JpZ2luX2VjEHIaCXVzLWVhc3QtMSJHMEUCIFmNLuzLrY6xBxIHywNrBPYIOkoUdYpnRHkZIarvQLM8AiEApxv8xC9GlPB7Ql8FgBBxSuR5KfGYekOL8zSrRv0na4sq%2BgQIm%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FARABGgw2OTk3NTMzMDk3MDUiDLsyNxx2XysBDLqN2SrOBF8BKomAbWNazdySEBFsUqvMpNi98CfoFy%2FV4qv0dAt%2B7CDzqTVp5bjA33nH40XkOSFTAJgDr8hh9N%2F5OO3Sa2k9AkKyw1k4QGpgIkAqRU%2BVXWAVeCX5XEOlxJBnoaZqJDaVTAIDyNDXrEDE1ZVWIYSGi9Le75Ib%2FNOtR33SG95jSwXVYihe7uAlEB2QH4aAoGuUvtLOhZg9SzNCUJ5SKcC8fzBea%2F0%2FOY8u759KuSxXKiW4vLRzUBHhT2WYEpSX6jecW24dHrxSRIP05g%2FgKBZckRCgnsXhh8aNmZStYr18gdMvUabeX%2Bi6Wc2MaUSAV%2FURBSrJ%2BgUUahxR6t8iS0wg1KnS%2FHFDAPuUxkLdS5lUUp6ZxLOljb0zQ5XjMCUy%2BB4FilsZkItoXtQv2MI8qB86epG4usfRHw7X8BQrraE38GO86%2BrrMf%2FfGtjmIH%2F9C3okCfCzJD2VR6Ek21vFNGnQs9kgtxB1tPC4UnA7sdzvwBJl8yhnmMfqnZxtiUHPx8aKpIigZPWQpVJHv9nVOZbSYl4D2syNhLiDiQsCVBm%2B%2F%2FsWZzB9csdS0NKA9uPlYsbY0DczwkAe21g%2BvJoPdK3i2vHOTODibfJjkmI2YkmYOb2a4KCHrw1hgSdJOCxEWUsB77YNinu5q993h6mAcMsWPBbNM%2BI1LQaEUzXAjWMZJUdfraEwS28oggMoHxbVp5qSsxynxQKLIQV%2FCSguiF4Kfya7GaZjTKxHG%2BxmmNTjRYMN%2BPQQXd15uAUTjUwt1UHy4LBXN2jWQkz%2Fc%2FJ2MKDNoMQGOpoB6I7FGWFXrhqOyZmWWzXj0q3PFPc87tc8GZReARCe1yUZD0MOyLF2KZipykGBFlzEJa0gIbr9AlkXvov%2FqRsDU8e%2FSJzUiCmnQQK74PJlh5xueMwijbjsMJeJExKOTafapwFelMySalx7oAYzz3vE6JI2cvIEMhZB25UAGLdLtjGFuF1xyr3LdNZv3KaEbufXlQ628l%2B5f0%2BA2A%3D%3D&Expires=1753755160
-[14] oracle apex - Create Type of Region Plug-In based on "List" Type of ... https://stackoverflow.com/questions/51210088/create-type-of-region-plug-in-based-on-list-type-of-region
-[15] Flows for APEX v23.1 https://flowsforapex.org/Flows4APEX231Features/
-[16] From Prototype to Great Application Component in APEX https://blog.apexapplab.dev/from-prototype-to-great-application-component
-[17] Oracle APEX new features – the low-code platform keeps evolving https://pretius.com/blog/oracle-apex-new-features
-[18] What's New in Oracle APEX 23.1? – Doyensys Blog https://doyensys.com/blogs/oracle-apex-23-1/
-[19] Oracle APEX Release 23.1 - Develop Apps https://docs.oracle.com/en/database/oracle/apex/23.1/buildapplications.html
-[20] APEX 23.1 and server-side JavaScript - YouTube https://www.youtube.com/watch?v=fpRfB67VlxQ
-[21] Oracle APEX - Plug-ins Explained https://www.rittmanmead.com/blog/2023/12/oracle-apex-plugins-explained/
-[22] Template Components in Oracle APEX 23.1 - YouTube https://www.youtube.com/watch?v=oxqu61PJsSo
-[23] Oracle Apex 23.1 - a deep dive into the biggest new features https://www.youtube.com/watch?v=Hi4KVHYdPBU
-[24] How I created my first APEX Template Component https://blog.apexapplab.dev/how-i-created-my-first-apex-template-component
-[25] Building an Oracle APEX Plugin: A Deep Dive, part 2 - Novoshore https://www.novoshore.com/2025/03/19/building-an-oracle-apex-plugin-a-deep-dive-part-2/
-[26] Урок 1. Первоначальные настройки внешнего вида приложения ... https://www.youtube.com/watch?v=eypFRHW0zTA
-[27] B Oracle APEX Limits https://docs.oracle.com/en/database/oracle/apex/23.1/htmdb/oracle-apex-limits.html
-[28] 5.8.4 Editing User Interface Attributes - APEX - Oracle Help Center https://docs.oracle.com/en/database/oracle/apex/23.1/htmdb/editing-user-interface-attributes.html
-[29] [PDF] Oracle® APEX - Installation Guide https://docs.oracle.com/en/database/oracle/apex/23.1/htmig/oracle-apex-installation-guide.pdf
-[30] Template Components - Oracle Help Center https://docs.oracle.com/en/database/oracle/apex/23.1/htmdb/template-components.html
-[31] Plug-Ins - apex.world https://apex.world/ords/r/apex_world/apex-world/plug-ins
-[32] Oracle APEX Region Plugin - APEX Signature https://github.com/Dani3lSun/apex-plugin-apexsignature
-[33] Dynamic Content Region not able to read in page item in Oracle Apex https://stackoverflow.com/questions/76728627/dynamic-content-region-not-able-to-read-in-page-item-in-oracle-apex
-[34] Dynamic Content region must use a template with ID attribute https://stackoverflow.com/questions/77249179/dynamic-content-region-must-use-a-template-with-id-attribute
-[35] [PDF] APEX and the REST of the world - nlOUG https://nloug.nl/wp-content/uploads/2024/04/rest-in-apex-state-of-things.pdf
-[36] Oracle APEX Guide for 2023! - YouTube https://www.youtube.com/watch?v=iSJnCDHlRpU
-[37] Quick Install Guide | APEX Office Print (AOP) https://www.apexofficeprint.com/docs/getting-started/quick-install
-[38] Oracle APEX 23.1 Known Issues https://www.oracle.com/tools/downloads/apex-downloads/apex-231-known-issues/
-[39] Convert PL/SQL block returning html to a plugin - render function https://forums.oracle.com/ords/apexds/post/convert-pl-sql-block-returning-html-to-a-plugin-render-func-3702
+set verify on feedback on define on

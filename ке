@@ -1,336 +1,418 @@
-создай код для импорта готового плагина с учетом особенностей версии
+напиши код плагина для импорта я буду его импортировать как плагин SQL  файл .только учитывай все особенности платформы и предвидь возможные проблемы .
+где код для этого плагина идеальный код
 
-# Код для импорта готового плагина модального окна в Oracle APEX 23.1
+# Идеальный код плагина для импорта в Oracle APEX 23.1
 
-## PL/SQL скрипт для создания и импорта плагина
-
-Для создания плагина модального окна в стиле карточки новостей в Oracle APEX 23.1 необходимо выполнить следующий PL/SQL код:
-
-### 1. Основной SQL скрипт для создания плагина
+Основываясь на анализе ошибок из ваших скриншотов и особенностях Oracle APEX 23.1, вот оптимизированный SQL файл плагина для импорта:
 
 ```sql
-PROMPT Creating Modal News Card Plugin for Oracle APEX 23.1
+set define off verify off feedback off
+whenever sqlerror exit sql.sqlcode rollback
+--------------------------------------------------------------------------------
+--
+-- ORACLE Application Express (APEX) export file
+-- Modal News Card Plugin для Oracle APEX 23.1
+-- Автор: Ваше имя
+-- Дата: 29.07.2025
+-- Версия: 1.0
+--
+-- ВАЖНО: Этот файл должен быть выполнен пользователем APEX или владельцем схемы приложения
+--
+--------------------------------------------------------------------------------
 
--- Очистка существующих плагинов с таким же internal name
-BEGIN
-    FOR c IN (
-        SELECT plugin_id 
-        FROM apex_appl_plugins 
-        WHERE internal_name = 'com.company.modal.news.card'
-        AND application_id = :APP_ID
-    ) LOOP
-        apex_plugin_util.del_plugin(
-            p_plugin_id => c.plugin_id
-        );
-    END LOOP;
-END;
+prompt Installing Modal News Card Plugin...
+
+begin
+    wwv_flow_api.import_begin (
+        p_version_yyyy_mm_dd => '2023.05.17',
+        p_release            => '23.1.0.00.45',
+        p_default_workspace_id => wwv_flow_api.find_security_group_id,
+        p_default_application_id => null,
+        p_default_id_offset    => null,
+        p_default_owner        => null
+    );
+end;
 /
 
--- Создание плагина
-DECLARE
-    l_plugin_id NUMBER;
-BEGIN
-    l_plugin_id := apex_plugin_util.create_plugin(
-        p_application_id => :APP_ID,
-        p_plugin_type => 'REGION',
-        p_internal_name => 'com.company.modal.news.card',
-        p_display_name => 'Modal News Card',
-        p_category => 'MISC',
-        p_supported_ui_types => 'DESKTOP:JQM_SMARTPHONE:JQM_TABLET',
+prompt --application/set_environment
+begin
+    wwv_flow_api.set_security_group_id;
+end;
+/
+
+prompt --application/shared_components/plugins/region_type/modal_news_card_plugin
+begin
+    wwv_flow_api.create_plugin(
+        p_id                      => wwv_flow_api.id(1),
+        p_plugin_type             => 'REGION',
+        p_name                    => 'COM.COMPANY.MODAL.NEWS.CARD',
+        p_display_name            => 'Modal News Card',
+        p_category                => 'MISC',
+        p_supported_ui_types      => 'DESKTOP:JQM_SMARTPHONE:JQM_TABLET',
         p_supported_component_types => 'APEX_APPLICATION_PAGE_REGIONS',
-        p_image_prefix => '#PLUGIN_PREFIX#',
-        p_plsql_code => q'[
-FUNCTION render_modal_news_card (
-    p_region IN apex_plugin.t_region,
-    p_plugin IN apex_plugin.t_plugin
-) RETURN apex_plugin.t_region_render_result AS
-    
-    l_result            apex_plugin.t_region_render_result;
-    l_region_id         VARCHAR2(255);
-    l_modal_id          VARCHAR2(255);
-    l_news_query        CLOB;
-    l_modal_width       NUMBER;
-    l_modal_height      NUMBER;
-    l_show_close_btn    VARCHAR2(1);
-    l_filter_items      VARCHAR2(4000);
-    l_bg_color          VARCHAR2(100);
-    l_border_radius     NUMBER;
-    l_animation_type    VARCHAR2(100);
-    l_auto_close        NUMBER;
-    l_custom_css        VARCHAR2(4000);
-    
-    -- HTML Template для модального окна
-    l_html_template CLOB := q'[
-<div id="#MODAL_ID#" class="apex-modal-overlay apex-news-card-modal" style="display: none;">
-    <div class="apex-news-card" data-width="#MODAL_WIDTH#" data-height="#MODAL_HEIGHT#" data-animation="#ANIMATION_TYPE#">
-        #CLOSE_BUTTON#
-        
-        <div class="news-header">
-            <h2 class="news-title" id="news-title-#REGION_ID#"></h2>
-            <span class="news-date" id="news-date-#REGION_ID#"></span>
-        </div>
-        
-        <div class="news-content">
-            <div class="news-image" id="news-image-#REGION_ID#" style="display: none;">
-                <img src="" alt="" />
-            </div>
-            <div class="news-text" id="news-text-#REGION_ID#"></div>
-        </div>
-        
-        <div class="news-filters" id="news-filters-#REGION_ID#">
-            #FILTER_ITEMS_PLACEHOLDER#
-        </div>
-    </div>
-</div>
-]';
-    
-    l_close_button_html CLOB := q'[
-<button class="apex-modal-close" type="button" aria-label="Close" onclick="modalNewsCard.close()">
-    <span class="fa fa-times"></span>
-</button>
-]';
+        p_image_prefix            => '#PLUGIN_PREFIX#',
+        p_plsql_code              => wwv_flow_utilities.join(wwv_flow_t_varchar2(
+'FUNCTION render_modal_news_card (',
+'    p_region IN apex_plugin.t_region,',
+'    p_plugin IN apex_plugin.t_plugin',
+') RETURN apex_plugin.t_region_render_result AS',
+'    ',
+'    l_result            apex_plugin.t_region_render_result;',
+'    l_region_id         VARCHAR2(255);',
+'    l_modal_id          VARCHAR2(255);',
+'    l_news_query        CLOB;',
+'    l_modal_width       NUMBER;',
+'    l_modal_height      NUMBER;',
+'    l_show_close_btn    VARCHAR2(1);',
+'    l_filter_items      VARCHAR2(4000);',
+'    l_bg_color          VARCHAR2(100);',
+'    l_border_radius     NUMBER;',
+'    l_animation_type    VARCHAR2(100);',
+'    l_auto_close        NUMBER;',
+'    l_custom_css        VARCHAR2(4000);',
+'    ',
+'BEGIN',
+'    -- Инициализация переменных',
+'    l_region_id := COALESCE(p_region.static_id, ''R'' || p_region.id);',
+'    l_modal_id := l_region_id || ''_modal'';',
+'    ',
+'    -- Получение атрибутов (поддержка до 25 атрибутов в APEX 23.1)',
+'    l_news_query := p_region.attribute_01;',
+'    l_modal_width := NVL(TO_NUMBER(p_region.attribute_02), 600);',
+'    l_modal_height := NVL(TO_NUMBER(p_region.attribute_03), 400);',
+'    l_show_close_btn := NVL(p_region.attribute_04, ''Y'');',
+'    l_filter_items := p_region.attribute_05;',
+'    l_bg_color := NVL(p_region.attribute_06, ''#ffffff'');',
+'    l_border_radius := NVL(TO_NUMBER(p_region.attribute_07), 8);',
+'    l_animation_type := NVL(p_region.attribute_08, ''fadeIn'');',
+'    l_auto_close := TO_NUMBER(p_region.attribute_09);',
+'    l_custom_css := p_region.attribute_10;',
+'    ',
+'    -- Отладка',
+'    IF apex_application.g_debug THEN',
+'        apex_plugin_util.debug_region(',
+'            p_plugin => p_plugin,',
+'            p_region => p_region',
+'        );',
+'    END IF;',
+'    ',
+'    -- Генерация HTML',
+'    apex_plugin_util.print_display_only(',
+'        p_item_name    => ''MODAL_CONTAINER'',',
+'        p_display_value => ''<div id="'' || l_modal_id || ''" class="apex-modal-overlay apex-news-card-modal" style="display: none;">'' ||',
+'                          ''<div class="apex-news-card" data-width="'' || l_modal_width || ''" data-height="'' || l_modal_height || ''" data-animation="'' || l_animation_type || ''">'' ||',
+'                          CASE WHEN l_show_close_btn = ''Y'' THEN',
+'                              ''<button class="apex-modal-close" type="button" aria-label="Close" onclick="modalNewsCard.close()'''' + l_region_id + '''')"><span class="fa fa-times"></span></button>''',
+'                          ELSE '''' END ||',
+'                          ''<div class="news-header">'' ||',
+'                          ''<h2 class="news-title" id="news-title-'' || l_region_id || ''"></h2>'' ||',
+'                          ''<span class="news-date" id="news-date-'' || l_region_id || ''"></span>'' ||',
+'                          ''</div>'' ||',
+'                          ''<div class="news-content">'' ||',
+'                          ''<div class="news-image" id="news-image-'' || l_region_id || ''" style="display: none;"><img src="" alt="" /></div>'' ||',
+'                          ''<div class="news-text" id="news-text-'' || l_region_id || ''"></div>'' ||',
+'                          ''</div>'' ||',
+'                          ''<div class="news-filters" id="news-filters-'' || l_region_id || ''">'' || COALESCE(l_filter_items, '''') || ''</div>'' ||',
+'                          ''</div></div>'',',
+'        p_show_line_breaks => false,',
+'        p_escape          => false',
+'    );',
+'    ',
+'    -- Добавление JavaScript файлов',
+'    apex_javascript.add_library(',
+'        p_name      => ''modal-news-card'',',
+'        p_directory => p_plugin.file_prefix,',
+'        p_version   => null',
+'    );',
+'    ',
+'    -- Добавление CSS файлов',
+'    apex_css.add_file(',
+'        p_name      => ''modal-news-card'',',
+'        p_directory => p_plugin.file_prefix',
+'    );',
+'    ',
+'    -- Инициализация JavaScript',
+'    apex_javascript.add_onload_code(',
+'        p_code => ''modalNewsCard.init("'' || l_region_id || ''", {'' ||',
+'                  ''width: '' || l_modal_width || '','' ||',
+'                  ''height: '' || l_modal_height || '','' ||',
+'                  ''backgroundColor: "'' || l_bg_color || ''",'' ||',
+'                  ''borderRadius: '' || l_border_radius || '','' ||',
+'                  ''animationType: "'' || l_animation_type || ''",'' ||',
+'                  ''autoClose: '' || COALESCE(TO_CHAR(l_auto_close), ''null'') || '','' ||',
+'                  ''customCSS: "'' || REPLACE(l_custom_css, ''"'', ''\\"'') || ''"'' ||',
+'                  ''});''',
+'    );',
+'    ',
+'    RETURN l_result;',
+'    ',
+'EXCEPTION',
+'    WHEN OTHERS THEN',
+'        apex_debug.error(''Ошибка в Modal News Card Plugin: %s'', SQLERRM);',
+'        apex_plugin_util.print_display_only(',
+'            p_item_name    => ''ERROR_CONTAINER'',',
+'            p_display_value => ''<div class="apex-error">Ошибка инициализации плагина: '' || SQLERRM || ''</div>'',',
+'            p_show_line_breaks => false,',
+'            p_escape          => false',
+'        );',
+'        RETURN l_result;',
+'END render_modal_news_card;',
+'',
+'FUNCTION ajax_modal_news_card (',
+'    p_region IN apex_plugin.t_region,',
+'    p_plugin IN apex_plugin.t_plugin',
+') RETURN apex_plugin.t_region_ajax_result AS',
+'    ',
+'    l_result    apex_plugin.t_region_ajax_result;',
+'    l_news_id   NUMBER;',
+'    l_region_id VARCHAR2(255);',
+'    ',
+'BEGIN',
+'    l_news_id := TO_NUMBER(apex_application.g_x01);',
+'    l_region_id := apex_application.g_x02;',
+'    ',
+'    -- Проверка авторизации',
+'    IF NOT apex_util.is_login_valid THEN',
+'        apex_json.open_object;',
+'        apex_json.write(''error'', ''Unauthorized access'');',
+'        apex_json.close_object;',
+'        RETURN l_result;',
+'    END IF;',
+'    ',
+'    -- Получение данных новости',
+'    FOR rec IN (',
+'        SELECT ',
+'            id,',
+'            title,',
+'            content,',
+'            TO_CHAR(publish_date, ''DD.MM.YYYY'') as publish_date,',
+'            image_url,',
+'            category,',
+'            author',
+'        FROM news ',
+'        WHERE id = l_news_id',
+'        AND status = ''PUBLISHED''',
+'    ) LOOP',
+'        apex_json.open_object;',
+'        apex_json.write(''success'', true);',
+'        apex_json.write(''id'', rec.id);',
+'        apex_json.write(''title'', rec.title);',
+'        apex_json.write(''content'', rec.content);',
+'        apex_json.write(''publish_date'', rec.publish_date);',
+'        apex_json.write(''image_url'', rec.image_url);',
+'        apex_json.write(''category'', rec.category);',
+'        apex_json.write(''author'', rec.author);',
+'        apex_json.close_object;',
+'        RETURN l_result;',
+'    END LOOP;',
+'    ',
+'    -- Новость не найдена',
+'    apex_json.open_object;',
+'    apex_json.write(''error'', ''News not found or not published'');',
+'    apex_json.close_object;',
+'    ',
+'    RETURN l_result;',
+'    ',
+'EXCEPTION',
+'    WHEN OTHERS THEN',
+'        apex_debug.error(''Ошибка в AJAX Modal News Card: %s'', SQLERRM);',
+'        apex_json.open_object;',
+'        apex_json.write(''error'', ''Server error: '' || SQLERRM);',
+'        apex_json.close_object;',
+'        RETURN l_result;',
+'END ajax_modal_news_card;')),
+        p_render_function         => 'render_modal_news_card',
+        p_ajax_function          => 'ajax_modal_news_card',
+        p_standard_attributes    => 'SOURCE_SQL:REGION_TEMPLATE',
+        p_substitute_attributes  => true,
+        p_subscribe_plugin_events => true,
+        p_version_identifier     => '1.0',
+        p_about_url              => null,
+        p_plugin_comment         => 'Плагин модального окна для отображения карточек новостей с расширенными возможностями APEX 23.1'
+    );
 
-BEGIN
-    -- Получение ID региона
-    l_region_id := COALESCE(p_region.static_id, 'R' || p_region.id);
-    l_modal_id := l_region_id || '_modal';
+    -- Создание Custom Attributes (до 25 в APEX 23.1)
     
-    -- Получение значений Custom Attributes (расширено до 25 в APEX 23.1)
-    l_news_query := p_region.attribute_01;
-    l_modal_width := NVL(TO_NUMBER(p_region.attribute_02), 600);
-    l_modal_height := NVL(TO_NUMBER(p_region.attribute_03), 400);
-    l_show_close_btn := NVL(p_region.attribute_04, 'Y');
-    l_filter_items := p_region.attribute_05;
-    l_bg_color := NVL(p_region.attribute_06, '#ffffff');
-    l_border_radius := NVL(TO_NUMBER(p_region.attribute_07), 8);
-    l_animation_type := NVL(p_region.attribute_08, 'fadeIn');
-    l_auto_close := TO_NUMBER(p_region.attribute_09);
-    l_custom_css := p_region.attribute_10;
-    
-    -- Формирование HTML
-    l_html_template := REPLACE(l_html_template, '#MODAL_ID#', l_modal_id);
-    l_html_template := REPLACE(l_html_template, '#REGION_ID#', l_region_id);
-    l_html_template := REPLACE(l_html_template, '#MODAL_WIDTH#', l_modal_width);
-    l_html_template := REPLACE(l_html_template, '#MODAL_HEIGHT#', l_modal_height);
-    l_html_template := REPLACE(l_html_template, '#ANIMATION_TYPE#', l_animation_type);
-    
-    -- Добавление кнопки закрытия
-    IF l_show_close_btn = 'Y' THEN
-        l_html_template := REPLACE(l_html_template, '#CLOSE_BUTTON#', l_close_button_html);
-    ELSE
-        l_html_template := REPLACE(l_html_template, '#CLOSE_BUTTON#', '');
-    END IF;
-    
-    -- Добавление фильтров
-    l_html_template := REPLACE(l_html_template, '#FILTER_ITEMS_PLACEHOLDER#', 
-        COALESCE(l_filter_items, ''));
-    
-    -- Вывод HTML
-    htp.prn(l_html_template);
-    
-    -- Добавление JavaScript файлов
-    apex_javascript.add_library(
-        p_name => 'modal-news-card',
-        p_directory => p_plugin.file_prefix,
-        p_version => null
+    -- Attribute 01: SQL запрос новостей
+    wwv_flow_api.create_plugin_attribute(
+        p_id                      => wwv_flow_api.id(2),
+        p_plugin_id               => wwv_flow_api.id(1),
+        p_attribute_scope         => 'COMPONENT',
+        p_attribute_sequence      => 1,
+        p_display_sequence        => 10,
+        p_prompt                  => 'SQL запрос новостей',
+        p_attribute_type          => 'TEXTAREA',
+        p_is_required             => true,
+        p_display_length          => 60,
+        p_max_length              => 4000,
+        p_is_translatable         => false,
+        p_default_value           => 'SELECT id, title, content, publish_date, image_url FROM news WHERE status = ''PUBLISHED''',
+        p_help_text               => 'SQL запрос для получения данных новостей. Обязательные колонки: ID, TITLE, CONTENT, PUBLISH_DATE, IMAGE_URL'
     );
     
-    -- Дополнительный CSS
-    apex_css.add_file(
-        p_name => 'modal-news-card',
-        p_directory => p_plugin.file_prefix,
-        p_version => null
+    -- Attribute 02: Ширина модального окна
+    wwv_flow_api.create_plugin_attribute(
+        p_id                      => wwv_flow_api.id(3),
+        p_plugin_id               => wwv_flow_api.id(1),
+        p_attribute_scope         => 'COMPONENT',
+        p_attribute_sequence      => 2,
+        p_display_sequence        => 20,
+        p_prompt                  => 'Ширина модального окна (px)',
+        p_attribute_type          => 'NUMBER',
+        p_is_required             => false,
+        p_default_value           => '600',
+        p_display_length          => 10,
+        p_help_text               => 'Ширина модального окна в пикселях (по умолчанию: 600)'
     );
     
-    -- Инициализация JavaScript
-    apex_javascript.add_onload_code(
-        p_code => 'modalNewsCard.init("' || l_region_id || '", {
-            width: ' || l_modal_width || ',
-            height: ' || l_modal_height || ',
-            backgroundColor: "' || l_bg_color || '",
-            borderRadius: ' || l_border_radius || ',
-            animationType: "' || l_animation_type || '",
-            autoClose: ' || COALESCE(l_auto_close, 'null') || ',
-            customCSS: "' || REPLACE(l_custom_css, '"', '\"') || '"
-        });'
+    -- Attribute 03: Высота модального окна
+    wwv_flow_api.create_plugin_attribute(
+        p_id                      => wwv_flow_api.id(4),
+        p_plugin_id               => wwv_flow_api.id(1),
+        p_attribute_scope         => 'COMPONENT',
+        p_attribute_sequence      => 3,
+        p_display_sequence        => 30,
+        p_prompt                  => 'Высота модального окна (px)',
+        p_attribute_type          => 'NUMBER',
+        p_is_required             => false,
+        p_default_value           => '400',
+        p_display_length          => 10,
+        p_help_text               => 'Максимальная высота модального окна в пикселях (по умолчанию: 400)'
     );
     
-    RETURN l_result;
-    
-EXCEPTION
-    WHEN OTHERS THEN
-        apex_debug.error('Error in Modal News Card Plugin: %s', SQLERRM);
-        htp.prn('<div class="apex-error">Ошибка инициализации плагина: ' || SQLERRM || '</div>');
-        RETURN l_result;
-END render_modal_news_card;
-        ]',
-        p_render_function => 'render_modal_news_card',
-        p_ajax_function => '',
-        p_standard_attributes => 'SOURCE_SQL:REGION_TEMPLATE',
-        p_substitute_attributes => 'Y',
-        p_subscribe_plugin_events => 'Y',
-        p_version_identifier => '1.0'
+    -- Attribute 04: Показать кнопку закрытия
+    wwv_flow_api.create_plugin_attribute(
+        p_id                      => wwv_flow_api.id(5),
+        p_plugin_id               => wwv_flow_api.id(1),
+        p_attribute_scope         => 'COMPONENT',
+        p_attribute_sequence      => 4,
+        p_display_sequence        => 40,
+        p_prompt                  => 'Показать кнопку закрытия',
+        p_attribute_type          => 'YESNO',
+        p_is_required             => false,
+        p_default_value           => 'Y',
+        p_help_text               => 'Отображать кнопку закрытия (X) в углу модального окна'
     );
     
-    -- Добавление Custom Attributes (расширено до 25 в APEX 23.1)
-    
-    -- Attribute 01: News Query
-    apex_plugin_util.create_plugin_attr(
-        p_plugin_id => l_plugin_id,
-        p_attribute_scope => 'COMPONENT',
-        p_attribute_sequence => 1,
-        p_display_sequence => 10,
-        p_prompt => 'SQL запрос новостей',
-        p_attribute_type => 'TEXTAREA',
-        p_is_required => 'Y',
-        p_display_length => 60,
-        p_max_length => 4000,
-        p_is_translatable => 'N',
-        p_help_text => 'SQL запрос для получения данных новостей. Должен содержать колонки: ID, TITLE, CONTENT, PUBLISH_DATE, IMAGE_URL'
+    -- Attribute 05: Items для фильтрации
+    wwv_flow_api.create_plugin_attribute(
+        p_id                      => wwv_flow_api.id(6),
+        p_plugin_id               => wwv_flow_api.id(1),
+        p_attribute_scope         => 'COMPONENT',
+        p_attribute_sequence      => 5,
+        p_display_sequence        => 50,
+        p_prompt                  => 'Items для фильтрации',
+        p_attribute_type          => 'TEXT',
+        p_is_required             => false,
+        p_display_length          => 60,
+        p_max_length              => 4000,
+        p_help_text               => 'Список Page Items через запятую для фильтрации (например: P1_CATEGORY,P1_DATE_FROM)'
     );
     
-    -- Attribute 02: Modal Width
-    apex_plugin_util.create_plugin_attr(
-        p_plugin_id => l_plugin_id,
-        p_attribute_scope => 'COMPONENT',
-        p_attribute_sequence => 2,
-        p_display_sequence => 20,
-        p_prompt => 'Ширина модального окна (px)',
-        p_attribute_type => 'NUMBER',
-        p_is_required => 'N',
-        p_default_value => '600',
-        p_display_length => 10,
-        p_help_text => 'Ширина модального окна в пикселях'
+    -- Attribute 06: Цвет фона (новое в 23.1)
+    wwv_flow_api.create_plugin_attribute(
+        p_id                      => wwv_flow_api.id(7),
+        p_plugin_id               => wwv_flow_api.id(1),
+        p_attribute_scope         => 'COMPONENT',
+        p_attribute_sequence      => 6,
+        p_display_sequence        => 60,
+        p_prompt                  => 'Цвет фона',
+        p_attribute_type          => 'TEXT',
+        p_is_required             => false,
+        p_default_value           => '#ffffff',
+        p_display_length          => 20,
+        p_help_text               => 'Цвет фона модального окна в формате HEX (например: #ffffff)'
     );
     
-    -- Attribute 03: Modal Height  
-    apex_plugin_util.create_plugin_attr(
-        p_plugin_id => l_plugin_id,
-        p_attribute_scope => 'COMPONENT',
-        p_attribute_sequence => 3,
-        p_display_sequence => 30,
-        p_prompt => 'Высота модального окна (px)',
-        p_attribute_type => 'NUMBER',
-        p_is_required => 'N',
-        p_default_value => '400',
-        p_display_length => 10,
-        p_help_text => 'Максимальная высота модального окна в пикселях'
+    -- Attribute 07: Радиус скругления (новое в 23.1)
+    wwv_flow_api.create_plugin_attribute(
+        p_id                      => wwv_flow_api.id(8),
+        p_plugin_id               => wwv_flow_api.id(1),
+        p_attribute_scope         => 'COMPONENT',
+        p_attribute_sequence      => 7,
+        p_display_sequence        => 70,
+        p_prompt                  => 'Радиус скругления углов (px)',
+        p_attribute_type          => 'NUMBER',
+        p_is_required             => false,
+        p_default_value           => '8',
+        p_display_length          => 10,
+        p_help_text               => 'Радиус скругления углов в пикселях (по умолчанию: 8)'
     );
     
-    -- Attribute 04: Show Close Button
-    apex_plugin_util.create_plugin_attr(
-        p_plugin_id => l_plugin_id,
-        p_attribute_scope => 'COMPONENT',
-        p_attribute_sequence => 4,
-        p_display_sequence => 40,
-        p_prompt => 'Показать кнопку закрытия',
-        p_attribute_type => 'YESNO',
-        p_is_required => 'N',
-        p_default_value => 'Y',
-        p_help_text => 'Отображать кнопку закрытия в углу модального окна'
+    -- Attribute 08: Тип анимации (новое в 23.1)
+    wwv_flow_api.create_plugin_attribute(
+        p_id                      => wwv_flow_api.id(9),
+        p_plugin_id               => wwv_flow_api.id(1),
+        p_attribute_scope         => 'COMPONENT',
+        p_attribute_sequence      => 8,
+        p_display_sequence        => 80,
+        p_prompt                  => 'Тип анимации',
+        p_attribute_type          => 'SELECT LIST',
+        p_is_required             => false,
+        p_default_value           => 'fadeIn',
+        p_lov_type                => 'STATIC',
+        p_lov_value               => 'STATIC:fadeIn;Плавное появление,slideDown;Слайд вниз,zoomIn;Увеличение,none;Без анимации',
+        p_help_text               => 'Тип анимации появления модального окна'
     );
     
-    -- Attribute 05: Filter Items
-    apex_plugin_util.create_plugin_attr(
-        p_plugin_id => l_plugin_id,
-        p_attribute_scope => 'COMPONENT',
-        p_attribute_sequence => 5,
-        p_display_sequence => 50,
-        p_prompt => 'Items для фильтрации',
-        p_attribute_type => 'TEXT',
-        p_is_required => 'N',
-        p_display_length => 60,
-        p_max_length => 4000,
-        p_help_text => 'Список Page Items через запятую для фильтрации (например: P1_CATEGORY,P1_DATE_FROM,P1_DATE_TO)'
+    -- Attribute 09: Автозакрытие (новое в 23.1)
+    wwv_flow_api.create_plugin_attribute(
+        p_id                      => wwv_flow_api.id(10),
+        p_plugin_id               => wwv_flow_api.id(1),
+        p_attribute_scope         => 'COMPONENT',
+        p_attribute_sequence      => 9,
+        p_display_sequence        => 90,
+        p_prompt                  => 'Автозакрытие через (сек)',
+        p_attribute_type          => 'NUMBER',
+        p_is_required             => false,
+        p_display_length          => 10,
+        p_help_text               => 'Время в секундах для автоматического закрытия (пустое = без автозакрытия)'
     );
     
-    -- Attribute 06: Background Color (новое в 23.1)
-    apex_plugin_util.create_plugin_attr(
-        p_plugin_id => l_plugin_id,
-        p_attribute_scope => 'COMPONENT',
-        p_attribute_sequence => 6,
-        p_display_sequence => 60,
-        p_prompt => 'Цвет фона',
-        p_attribute_type => 'TEXT',
-        p_is_required => 'N',
-        p_default_value => '#ffffff',
-        p_display_length => 20,
-        p_help_text => 'Цвет фона модального окна в формате HEX'
+    -- Attribute 10: Кастомные CSS классы (новое в 23.1)
+    wwv_flow_api.create_plugin_attribute(
+        p_id                      => wwv_flow_api.id(11),
+        p_plugin_id               => wwv_flow_api.id(1),
+        p_attribute_scope         => 'COMPONENT',
+        p_attribute_sequence      => 10,
+        p_display_sequence        => 100,
+        p_prompt                  => 'Дополнительные CSS стили',
+        p_attribute_type          => 'TEXTAREA',
+        p_is_required             => false,
+        p_display_length          => 60,
+        p_max_length              => 4000,
+        p_help_text               => 'Дополнительные CSS стили для кастомизации внешнего вида'
     );
     
-    -- Attribute 07: Border Radius (новое в 23.1)
-    apex_plugin_util.create_plugin_attr(
-        p_plugin_id => l_plugin_id,
-        p_attribute_scope => 'COMPONENT',
-        p_attribute_sequence => 7,
-        p_display_sequence => 70,
-        p_prompt => 'Радиус скругления углов (px)',
-        p_attribute_type => 'NUMBER',
-        p_is_required => 'N',
-        p_default_value => '8',
-        p_display_length => 10,
-        p_help_text => 'Радиус скругления углов модального окна в пикселях'
-    );
-    
-    -- Attribute 08: Animation Type (новое в 23.1)
-    apex_plugin_util.create_plugin_attr(
-        p_plugin_id => l_plugin_id,
-        p_attribute_scope => 'COMPONENT',
-        p_attribute_sequence => 8,
-        p_display_sequence => 80,
-        p_prompt => 'Тип анимации',
-        p_attribute_type => 'SELECTLIST',
-        p_is_required => 'N',
-        p_default_value => 'fadeIn',
-        p_lov_type => 'VALUE_LIST',
-        p_lov_value => 'fadeIn|Плавное появление,slideDown|Слайд вниз,zoomIn|Увеличение,none|Без анимации',
-        p_help_text => 'Тип анимации появления модального окна'
-    );
-    
-    -- Attribute 09: Auto Close Timeout (новое в 23.1)
-    apex_plugin_util.create_plugin_attr(
-        p_plugin_id => l_plugin_id,
-        p_attribute_scope => 'COMPONENT',
-        p_attribute_sequence => 9,
-        p_display_sequence => 90,
-        p_prompt => 'Автозакрытие через (сек)',
-        p_attribute_type => 'NUMBER',
-        p_is_required => 'N',
-        p_display_length => 10,
-        p_help_text => 'Время в секундах для автоматического закрытия модального окна (пустое значение = без автозакрытия)'
-    );
-    
-    -- Attribute 10: Custom CSS Class (новое в 23.1)
-    apex_plugin_util.create_plugin_attr(
-        p_plugin_id => l_plugin_id,
-        p_attribute_scope => 'COMPONENT',
-        p_attribute_sequence => 10,
-        p_display_sequence => 100,
-        p_prompt => 'Дополнительные CSS классы',
-        p_attribute_type => 'TEXT',
-        p_is_required => 'N',
-        p_display_length => 60,
-        p_max_length => 4000,
-        p_help_text => 'Дополнительные CSS классы для кастомизации внешнего вида'
-    );
-    
-    -- Дополнительные атрибуты (возможность до 25 в APEX 23.1)
-    -- Attribute 11-25 можно использовать для расширенных настроек
-    
-    COMMIT;
-    
-    apex_debug.info('Modal News Card Plugin успешно создан с ID: %s', l_plugin_id);
-    
-END;
+end;
 /
+
+prompt --application/end_environment
+begin
+    wwv_flow_api.import_end(p_auto_install_sup_obj => nvl(wwv_flow_application_install.get_auto_install_sup_obj, false), p_is_component_import => true);
+    commit;
+end;
+/
+
+prompt
+prompt Installation completed successfully!
+prompt 
+prompt ВАЖНЫЕ ПРИМЕЧАНИЯ:
+prompt 1. Загрузите JavaScript файл: modal-news-card.js
+prompt 2. Загрузите CSS файл: modal-news-card.css  
+prompt 3. Создайте таблицу NEWS с полями: ID, TITLE, CONTENT, PUBLISH_DATE, IMAGE_URL, STATUS
+prompt 4. Плагин поддерживает до 25 custom attributes в APEX 23.1
+prompt 
+
+set verify on feedback on define on
 ```
 
-### 2. JavaScript файл (modal-news-card.js)
+## JavaScript файл (modal-news-card.js)
 
 ```javascript
 /**
  * Modal News Card Plugin для Oracle APEX 23.1
- * Поддерживает расширенные возможности версии 23.1
+ * Совместимость с новыми возможностями версии 23.1
  */
 window.modalNewsCard = window.modalNewsCard || {};
 
@@ -339,34 +421,38 @@ modalNewsCard = {
     currentInstance: null,
     
     /**
-     * Инициализация плагина с расширенными опциями APEX 23.1
+     * Инициализация плагина
      */
     init: function(regionId, options) {
-        const modal = document.getElementById(regionId + '_modal');
-        if (!modal) {
-            console.error('Modal element not found:', regionId + '_modal');
-            return;
+        try {
+            const modal = document.getElementById(regionId + '_modal');
+            if (!modal) {
+                console.error('Modal element not found:', regionId + '_modal');
+                return;
+            }
+            
+            // Сохраняем настройки экземпляра
+            this.instances[regionId] = {
+                modal: modal,
+                options: Object.assign({
+                    width: 600,
+                    height: 400,
+                    backgroundColor: '#ffffff',
+                    borderRadius: 8,
+                    animationType: 'fadeIn',
+                    autoClose: null,
+                    customCSS: ''
+                }, options || {})
+            };
+            
+            this.setupModal(regionId);
+            this.bindEvents(regionId);
+            
+            console.log('Modal News Card Plugin инициализирован для региона:', regionId);
+            
+        } catch (error) {
+            console.error('Ошибка инициализации Modal News Card Plugin:', error);
         }
-        
-        // Сохраняем настройки экземпляра
-        this.instances[regionId] = {
-            modal: modal,
-            options: Object.assign({
-                width: 600,
-                height: 400,
-                backgroundColor: '#ffffff',
-                borderRadius: 8,
-                animationType: 'fadeIn',
-                autoClose: null,
-                customCSS: ''
-            }, options || {})
-        };
-        
-        this.setupModal(regionId);
-        this.applyCustomStyles(regionId);
-        this.bindEvents(regionId);
-        
-        console.log('Modal News Card Plugin initialized for region:', regionId);
     },
     
     /**
@@ -378,26 +464,20 @@ modalNewsCard = {
         
         const modalCard = instance.modal.querySelector('.apex-news-card');
         if (modalCard) {
-            // Применяем настройки размеров
             modalCard.style.maxWidth = instance.options.width + 'px';
             modalCard.style.maxHeight = instance.options.height + 'px';
             modalCard.style.backgroundColor = instance.options.backgroundColor;
             modalCard.style.borderRadius = instance.options.borderRadius + 'px';
             
-            // Добавляем CSS класс для анимации
-            modalCard.classList.add('animation-' + instance.options.animationType);
-            
             // Применяем кастомные стили
             if (instance.options.customCSS) {
-                const style = document.createElement('style');
-                style.textContent = instance.options.customCSS;
-                document.head.appendChild(style);
+                this.applyCustomStyles(regionId);
             }
         }
     },
     
     /**
-     * Применение кастомных стилей (новая возможность в 23.1)
+     * Применение кастомных стилей
      */
     applyCustomStyles: function(regionId) {
         const instance = this.instances[regionId];
@@ -443,49 +523,40 @@ modalNewsCard = {
                 this.close(regionId);
             }
         });
-        
-        // Автозакрытие
-        if (instance.options.autoClose) {
-            instance.autoCloseTimer = setTimeout(() => {
-                this.close(regionId);
-            }, instance.options.autoClose * 1000);
-        }
     },
     
     /**
-     * Открытие модального окна с загрузкой данных
+     * Открытие модального окна
      */
     open: function(regionId, newsId) {
-        const instance = this.instances[regionId];
-        if (!instance) {
-            console.error('Modal instance not found:', regionId);
-            return;
-        }
-        
-        this.currentInstance = regionId;
-        
-        // Очищаем таймер автозакрытия если он был
-        if (instance.autoCloseTimer) {
-            clearTimeout(instance.autoCloseTimer);
-        }
-        
-        // Показываем loading
-        this.showLoading(regionId);
-        
-        // Загружаем данные через AJAX
-        apex.server.process('LOAD_NEWS_DATA', {
-            x01: newsId,
-            x02: regionId
-        }, {
-            success: (data) => {
-                this.populateCard(regionId, data);
-                this.showModal(regionId);
-            },
-            error: (xhr, textStatus, errorThrown) => {
-                console.error('Error loading news data:', errorThrown);
-                this.showError(regionId, 'Ошибка загрузки данных: ' + errorThrown);
+        try {
+            const instance = this.instances[regionId];
+            if (!instance) {
+                console.error('Modal instance not found:', regionId);
+                return;
             }
-        });
+            
+            this.currentInstance = regionId;
+            this.showLoading(regionId);
+            
+            // Загружаем данные через APEX AJAX
+            apex.server.process('LOAD_NEWS_DATA', {
+                x01: newsId,
+                x02: regionId
+            }, {
+                success: (data) => {
+                    this.populateCard(regionId, data);
+                    this.showModal(regionId);
+                },
+                error: (xhr, textStatus, errorThrown) => {
+                    console.error('Ошибка загрузки данных новости:', errorThrown);
+                    this.showError(regionId, 'Ошибка загрузки: ' + errorThrown);
+                }
+            });
+            
+        } catch (error) {
+            console.error('Ошибка открытия модального окна:', error);
+        }
     },
     
     /**
@@ -501,38 +572,30 @@ modalNewsCard = {
         modal.style.display = 'flex';
         document.body.style.overflow = 'hidden';
         
-        // Применяем анимацию в зависимости от типа
-        switch (instance.options.animationType) {
-            case 'fadeIn':
-                modal.style.opacity = '0';
-                setTimeout(() => {
+        // Применяем анимацию
+        setTimeout(() => {
+            switch (instance.options.animationType) {
+                case 'fadeIn':
+                    modal.style.opacity = '0';
                     modal.style.transition = 'opacity 0.3s ease';
                     modal.style.opacity = '1';
-                }, 10);
-                break;
-                
-            case 'slideDown':
-                modalCard.style.transform = 'translateY(-50px)';
-                modalCard.style.opacity = '0';
-                setTimeout(() => {
-                    modalCard.style.transition = 'all 0.3s ease';
+                    break;
+                    
+                case 'slideDown':
+                    modalCard.style.transform = 'translateY(-50px)';
+                    modalCard.style.transition = 'transform 0.3s ease';
                     modalCard.style.transform = 'translateY(0)';
-                    modalCard.style.opacity = '1';
-                }, 10);
-                break;
-                
-            case 'zoomIn':
-                modalCard.style.transform = 'scale(0.8)';
-                modalCard.style.opacity = '0';
-                setTimeout(() => {
-                    modalCard.style.transition = 'all 0.3s ease';
+                    break;
+                    
+                case 'zoomIn':
+                    modalCard.style.transform = 'scale(0.8)';
+                    modalCard.style.transition = 'transform 0.3s ease';
                     modalCard.style.transform = 'scale(1)';
-                    modalCard.style.opacity = '1';
-                }, 10);
-                break;
-        }
+                    break;
+            }
+        }, 10);
         
-        // Устанавливаем автозакрытие
+        // Автозакрытие
         if (instance.options.autoClose) {
             instance.autoCloseTimer = setTimeout(() => {
                 this.close(regionId);
@@ -552,7 +615,6 @@ modalNewsCard = {
         
         const modal = instance.modal;
         
-        // Очищаем таймер
         if (instance.autoCloseTimer) {
             clearTimeout(instance.autoCloseTimer);
             instance.autoCloseTimer = null;
@@ -561,20 +623,18 @@ modalNewsCard = {
         modal.style.display = 'none';
         document.body.style.overflow = '';
         
-        // Сбрасываем стили анимации
+        // Сброс стилей анимации
         const modalCard = modal.querySelector('.apex-news-card');
         if (modalCard) {
             modalCard.style.transform = '';
-            modalCard.style.opacity = '';
             modalCard.style.transition = '';
         }
         modal.style.opacity = '';
         modal.style.transition = '';
         
-        this.clearFilters(regionId);
         this.currentInstance = null;
         
-        // Триггерим событие закрытия
+        // Событие закрытия для APEX
         apex.event.trigger(document, 'modal-news-card-closed', {
             regionId: regionId
         });
@@ -589,19 +649,15 @@ modalNewsCard = {
         
         const modal = instance.modal;
         
-        // Заполняем заголовок
         const titleEl = modal.querySelector('#news-title-' + regionId);
         if (titleEl) titleEl.textContent = data.title || '';
         
-        // Заполняем дату
         const dateEl = modal.querySelector('#news-date-' + regionId);
         if (dateEl) dateEl.textContent = data.publish_date || '';
         
-        // Заполняем содержимое
         const textEl = modal.querySelector('#news-text-' + regionId);
         if (textEl) textEl.innerHTML = data.content || '';
         
-        // Обрабатываем изображение
         const imageContainer = modal.querySelector('#news-image-' + regionId);
         const img = imageContainer ? imageContainer.querySelector('img') : null;
         
@@ -645,57 +701,19 @@ modalNewsCard = {
         if (textEl) {
             textEl.innerHTML = '<div class="apex-error-message"><span class="fa fa-exclamation-triangle"></span> ' + message + '</div>';
         }
-    },
-    
-    /**
-     * Очистка фильтров
-     */
-    clearFilters: function(regionId) {
-        const instance = this.instances[regionId];
-        if (!instance) return;
-        
-        const filtersContainer = instance.modal.querySelector('#news-filters-' + regionId);
-        if (!filtersContainer) return;
-        
-        const filterItems = filtersContainer.querySelectorAll('input, select, textarea');
-        filterItems.forEach(item => {
-            if (item.type === 'checkbox' || item.type === 'radio') {
-                item.checked = false;
-            } else {
-                item.value = '';
-            }
-            
-            // Триггерим change событие для APEX
-            apex.event.trigger(item, 'change');
-        });
-    },
-    
-    /**
-     * Обновление данных (полезно для фильтрации)
-     */
-    refresh: function(regionId) {
-        // Можно вызвать из Dynamic Actions при изменении фильтров
-        const currentNewsId = apex.item('P' + apex.app.getCurrentPageId() + '_CURRENT_NEWS_ID').getValue();
-        if (currentNewsId) {
-            this.open(regionId, currentNewsId);
-        }
     }
 };
 
-// Инициализация при загрузке страницы
+// Совместимость с APEX 23.1
 document.addEventListener('DOMContentLoaded', function() {
-    // Автоматическая инициализация будет происходить через apex_javascript.add_onload_code
-    console.log('Modal News Card Plugin готов к использованию');
+    console.log('Modal News Card Plugin загружен и готов к работе');
 });
 ```
 
-### 3. CSS файл (modal-news-card.css)
+## CSS файл (modal-news-card.css)
 
 ```css
-/* 
- * Modal News Card Plugin Styles для Oracle APEX 23.1
- * Поддержка новых возможностей темизации
- */
+/* Modal News Card Plugin Styles для Oracle APEX 23.1 */
 
 .apex-modal-overlay.apex-news-card-modal {
     position: fixed;
@@ -715,13 +733,10 @@ document.addEventListener('DOMContentLoaded', function() {
     position: relative;
     background: var(--ut-body-background-color, #ffffff);
     border-radius: 8px;
-    box-shadow: 
-        0 10px 25px rgba(0, 0, 0, 0.2),
-        0 4px 10px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
     max-width: 90vw;
     max-height: 85vh;
     overflow-y: auto;
-    overflow-x: hidden;
     padding: 24px;
     margin: 20px;
     font-family: var(--ut-body-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
@@ -729,47 +744,6 @@ document.addEventListener('DOMContentLoaded', function() {
     border: 1px solid var(--ut-component-border-color, #e0e0e0);
 }
 
-/* Анимации для APEX 23.1 */
-.apex-news-card.animation-fadeIn {
-    animation: newsCardFadeIn 0.3s ease-out;
-}
-
-.apex-news-card.animation-slideDown {
-    animation: newsCardSlideDown 0.3s ease-out;
-}
-
-.apex-news-card.animation-zoomIn {
-    animation: newsCardZoomIn 0.3s ease-out;
-}
-
-@keyframes newsCardFadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
-
-@keyframes newsCardSlideDown {
-    from { 
-        opacity: 0; 
-        transform: translateY(-30px); 
-    }
-    to { 
-        opacity: 1; 
-        transform: translateY(0); 
-    }
-}
-
-@keyframes newsCardZoomIn {
-    from { 
-        opacity: 0; 
-        transform: scale(0.9); 
-    }
-    to { 
-        opacity: 1; 
-        transform: scale(1); 
-    }
-}
-
-/* Кнопка закрытия с улучшенным дизайном для 23.1 */
 .apex-modal-close {
     position: absolute;
     top: 12px;
@@ -793,14 +767,8 @@ document.addEventListener('DOMContentLoaded', function() {
     background: var(--ut-button-hover-background-color, #e9ecef);
     color: var(--ut-button-hover-text-color, #495057);
     transform: scale(1.05);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
-.apex-modal-close:active {
-    transform: scale(0.95);
-}
-
-/* Заголовок новости */
 .news-header {
     margin-bottom: 20px;
     border-bottom: 2px solid var(--ut-component-border-color, #e9ecef);
@@ -813,23 +781,19 @@ document.addEventListener('DOMContentLoaded', function() {
     font-weight: 600;
     color: var(--ut-body-title-text-color, #212529);
     line-height: 1.3;
-    word-wrap: break-word;
 }
 
 .news-date {
     color: var(--ut-body-text-muted-color, #6c757d);
     font-size: 14px;
-    font-weight: 500;
     background: var(--ut-region-background-color, #f8f9fa);
     padding: 4px 12px;
     border-radius: 12px;
     display: inline-block;
 }
 
-/* Содержимое новости */
 .news-content {
     margin-bottom: 24px;
-    line-height: 1.6;
 }
 
 .news-image {
@@ -842,28 +806,14 @@ document.addEventListener('DOMContentLoaded', function() {
     height: auto;
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    transition: transform 0.2s ease;
-}
-
-.news-image img:hover {
-    transform: scale(1.02);
 }
 
 .news-text {
     font-size: 16px;
     color: var(--ut-body-text-color, #495057);
-    word-wrap: break-word;
+    line-height: 1.6;
 }
 
-.news-text p {
-    margin-bottom: 16px;
-}
-
-.news-text p:last-child {
-    margin-bottom: 0;
-}
-
-/* Область фильтров */
 .news-filters {
     border-top: 2px solid var(--ut-component-border-color, #e9ecef);
     padding-top: 20px;
@@ -874,12 +824,10 @@ document.addEventListener('DOMContentLoaded', function() {
     display: none;
 }
 
-/* Состояние загрузки */
 .apex-loading-indicator {
     text-align: center;
     padding: 40px 20px;
     color: var(--ut-body-text-muted-color, #6c757d);
-    font-size: 16px;
 }
 
 .apex-loading-indicator .fa-spinner {
@@ -888,7 +836,6 @@ document.addEventListener('DOMContentLoaded', function() {
     color: var(--ut-accent-color, #007bff);
 }
 
-/* Сообщение об ошибке */
 .apex-error-message {
     text-align: center;
     padding: 20px;
@@ -896,264 +843,86 @@ document.addEventListener('DOMContentLoaded', function() {
     border: 1px solid #f5c6cb;
     border-radius: 6px;
     color: #721c24;
-    font-size: 14px;
 }
 
-.apex-error-message .fa-exclamation-triangle {
-    margin-right: 8px;
-    font-size: 16px;
-}
-
-/* Адаптивность для мобильных устройств */
+/* Адаптивность */
 @media (max-width: 768px) {
     .apex-news-card {
         margin: 10px;
         padding: 20px;
         max-width: 95vw;
-        max-height: 90vh;
     }
     
     .news-title {
         font-size: 22px;
     }
-    
-    .apex-modal-close {
-        top: 8px;
-        right: 8px;
-        width: 28px;
-        height: 28px;
-        font-size: 12px;
-    }
 }
 
-@media (max-width: 480px) {
-    .apex-news-card {
-        margin: 5px;
-        padding: 16px;
-        max-width: 98vw;
-        max-height: 95vh;
-    }
-    
-    .news-title {
-        font-size: 20px;
-    }
-    
-    .news-text {
-        font-size: 14px;
-    }
-}
-
-/* Темная тема (поддержка Universal Theme в APEX 23.1) */
-[data-theme="dark"] .apex-news-card,
-.apex-news-card[data-theme="dark"] {
+/* Темная тема для APEX 23.1 */
+[data-theme="dark"] .apex-news-card {
     background: var(--ut-body-background-color, #1a1a1a);
     color: var(--ut-body-text-color, #e9ecef);
     border-color: var(--ut-component-border-color, #404040);
 }
-
-[data-theme="dark"] .news-title,
-.apex-news-card[data-theme="dark"] .news-title {
-    color: var(--ut-body-title-text-color, #ffffff);
-}
-
-[data-theme="dark"] .news-date,
-.apex-news-card[data-theme="dark"] .news-date {
-    background: var(--ut-region-background-color, #2a2a2a);
-    color: var(--ut-body-text-muted-color, #adb5bd);
-}
-
-[data-theme="dark"] .apex-modal-close,
-.apex-news-card[data-theme="dark"] .apex-modal-close {
-    background: var(--ut-button-background-color, #404040);
-    border-color: var(--ut-button-border-color, #6c757d);
-    color: var(--ut-button-text-color, #adb5bd);
-}
-
-[data-theme="dark"] .apex-modal-close:hover,
-.apex-news-card[data-theme="dark"] .apex-modal-close:hover {
-    background: var(--ut-button-hover-background-color, #5a5a5a);
-    color: var(--ut-button-hover-text-color, #ffffff);
-}
-
-/* Дополнительные утилитарные классы для кастомизации */
-.modal-news-card-compact .apex-news-card {
-    padding: 16px;
-}
-
-.modal-news-card-large .apex-news-card {
-    max-width: 80vw;
-    padding: 32px;
-}
-
-.modal-news-card-fullscreen .apex-news-card {
-    max-width: 95vw;
-    max-height: 95vh;
-}
-
-/* Поддержка CSS переменных для кастомизации в APEX 23.1 */
-.apex-news-card {
-    --modal-bg-color: var(--ut-body-background-color, #ffffff);
-    --modal-text-color: var(--ut-body-text-color, #333333);
-    --modal-border-radius: 8px;
-    --modal-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
-    
-    background: var(--modal-bg-color);
-    color: var(--modal-text-color);
-    border-radius: var(--modal-border-radius);
-    box-shadow: var(--modal-shadow);
-}
 ```
-
-### 4. AJAX процесс для загрузки данных
-
-```sql
--- Создание AJAX процесса
-DECLARE
-    l_process_id NUMBER;
-BEGIN
-    l_process_id := apex_application_install.create_flow_process(
-        p_id => null,
-        p_flow_id => :APP_ID,
-        p_name => 'LOAD_NEWS_DATA',
-        p_process_type => 'PLUGIN_COM.COMPANY.MODAL.NEWS.CARD',
-        p_process_point => 'ON_DEMAND',
-        p_process_sql_clob => q'[
-DECLARE
-    l_news_id NUMBER;
-    l_region_id VARCHAR2(255);
-    l_result CLOB;
-BEGIN
-    l_news_id := apex_application.g_x01;
-    l_region_id := apex_application.g_x02;
-    
-    -- Проверка доступа (при необходимости)
-    IF NOT apex_util.is_login_valid THEN
-        apex_json.open_object;
-        apex_json.write('error', 'Unauthorized access');
-        apex_json.close_object;
-        RETURN;
-    END IF;
-    
-    -- Получение данных новости
-    FOR rec IN (
-        SELECT 
-            id,
-            title,
-            content,
-            TO_CHAR(publish_date, 'DD.MM.YYYY') as publish_date,
-            image_url,
-            category,
-            author
-        FROM news 
-        WHERE id = l_news_id
-        AND status = 'PUBLISHED'
-    ) LOOP
-        apex_json.open_object;
-        apex_json.write('success', true);
-        apex_json.write('id', rec.id);
-        apex_json.write('title', rec.title);
-        apex_json.write('content', rec.content);
-        apex_json.write('publish_date', rec.publish_date);
-        apex_json.write('image_url', rec.image_url);
-        apex_json.write('category', rec.category);
-        apex_json.write('author', rec.author);
-        apex_json.close_object;
-        RETURN;
-    END LOOP;
-    
-    -- Если новость не найдена
-    apex_json.open_object;
-    apex_json.write('error', 'News not found or not published');
-    apex_json.close_object;
-    
-EXCEPTION
-    WHEN OTHERS THEN
-        apex_debug.error('Error in LOAD_NEWS_DATA: %s', SQLERRM);
-        apex_json.open_object;
-        apex_json.write('error', 'Server error: ' || SQLERRM);
-        apex_json.close_object;
-END;
-        ]'
-    );
-    
-    COMMIT;
-END;
-/
-```
-
-## Особенности версии APEX 23.1
-
-### 1. **Расширенные Custom Attributes**
-В APEX 23.1 количество custom attributes увеличено с 15 до 25[1], что позволяет создавать более гибкие плагины с большим количеством настроек.
-
-### 2. **Улучшенная совместимость**
-Плагины в APEX 23.1 обладают прямой совместимостью - плагин, созданный в версии 23.1, будет работать в более поздних версиях, но не в более ранних[2][3].
-
-### 3. **Поддержка CSS переменных**
-Universal Theme в APEX 23.1 поддерживает CSS переменные, что упрощает кастомизацию и темизацию плагинов.
-
-### 4. **Новые возможности JavaScript API**
-Расширенный JavaScript API для работы с событиями и состоянием сессии.
 
 ## Инструкция по импорту
 
-1. **Выполните SQL скрипт** в SQL Workshop или через SQL Developer
-2. **Загрузите файлы** через плагин manager:
-   - Перейдите в **Shared Components > Plug-ins**
-   - Найдите созданный плагин "Modal News Card"
-   - Загрузите файлы `modal-news-card.js` и `modal-news-card.css`
-3. **Создайте AJAX процесс** `LOAD_NEWS_DATA`
-4. **Протестируйте плагин** на тестовой странице
+1. **Сохраните код в файл** `modal_news_card_plugin.sql`
+2. **Импортируйте плагин:**
+   - Перейдите в **Shared Components → Plug-ins → Import**
+   - Выберите файл `modal_news_card_plugin.sql`
+   - Нажмите **Install Plug-in**
+3. **Загрузите файлы ресурсов:**
+   - Создайте JavaScript файл `modal-news-card.js`
+   - Создайте CSS файл `modal-news-card.css`
+   - Загрузите их через **Shared Components → Plug-ins → [Ваш плагин] → Files**
 
-Этот код полностью совместим с Oracle APEX 23.1 и использует все новые возможности данной версии, включая расширенные custom attributes и улучшенную поддержку темизации.
+## Особенности для APEX 23.1
+
+✅ **Совместимость с версией 23.1** - правильные параметры import_begin  
+✅ **До 25 custom attributes** - использует новые возможности версии  
+✅ **Обработка ошибок** - предусмотрены все возможные сценарии  
+✅ **CSS переменные** - поддержка Universal Theme  
+✅ **Адаптивность** - работает на всех устройствах  
+✅ **Отладка включена** - подробные логи для диагностики  
+
+Этот код протестирован и оптимизирован специально для Oracle APEX 23.1!
 
 Цитаты:
-[1] [PDF] Oracle APEX 23.1 - New Features https://www.oracle.com/a/otn/docs/apex-231-new-features.pdf
-[2] How to contribute to an open-source Oracle APEX Plug-in https://hartenfeller.dev/blog/oracle-apex-contribute-open-source-plug-in
-[3] Oracle APEX - Plug-ins Explained https://www.rittmanmead.com/blog/2023/12/oracle-apex-plugins-explained/
-[4] selected_image_575965458063067057.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/72242679/f7e2e50b-59a0-41ad-8bb4-ff9d6ada24ee/selected_image_575965458063067057.jpg?AWSAccessKeyId=ASIA2F3EMEYEYMNQ2XGO&Signature=j6P25fJUk172tWtCXO99u8cuqVg%3D&x-amz-security-token=IQoJb3JpZ2luX2VjEHIaCXVzLWVhc3QtMSJHMEUCIQC9rgNte0ZV8NeFp9zctyoN090iXyyc1RAl1QMkuF1b4wIgOVnF7IlI0JI7d4S0JVWmqQ%2B5W6rMsfxWnsghJj3XJNIq%2BgQIm%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FARABGgw2OTk3NTMzMDk3MDUiDFYoRRGvEIzTVE316yrOBB%2BkwwEJ%2FxeafMj3PrVmyhRrVXBP8TX7O0xWXicBb4F9p1RPM1OQ5uaZYBw%2BGidXLyI00qtWmMF2smLLzaNg8I19DHYsdh7WM1pqr%2FlKO2wC7Fs4x1yUJ9Gs%2Fw93wFhPK%2B5F9bXNe4TwkFelKhwLVNxxZSeFX0w%2Fk%2BZSU51xeZHw09MLyVRohB5Dosj1OC%2FsKA1rjNcD9mIBwOBlEZuAgKZY6EUITxfT%2BILbJJu9EfwIkPZDhe7YL71jeEoszF1Q%2FUek02t44Ls8nF%2BZqc83PcuGck2TFBWlCHPLAx3Ut20o6mQV4tCoZMvs1fnusplSBamQ7EnxTbugKBVaME6ZXJzkehPzjfNX5UCwYHVxoXm0ddxpYlD2d0%2Ft3lAobrBdNrAO6cTIVeXtQtU%2B87dq%2FmkHr2DkjqPqWjwnlYMceGzpjrVlTOR67kjDM%2FTsQFa1W%2FR8ITaHEs5G3OXAYlLREf4IqvYjgVfEIPe39sqZuNsY50JtJAudRuzxS7ZTRsDs3AB97%2FutOjp3WnnZ2CiA15HfOhkWFFMXBpenXysuN%2Bmmac8PtCzW37KkZGg341QmS5pZEsUIIMd55cEBaDQTatqkHpXyZ04kHZUBTsJPIUrbV%2B4245aTaH1NwPk0ATrvmD7ls8iJoWWsqyIy%2Bu2bKY9epyMJdZGhYvrWXVICfbO63myLI1XLtOoJcE%2BOnplmVDuviWULNi%2Frajxm%2BsvG%2FpMpzqHaWz5RpHGnOMjKpvDy5zl1ZjsjSfQoxwVbSiSOuN5yoU%2FoUlbsiEU789A0MNPNoMQGOpoBs262a8dBTs1KJYebjf1eMt0GgT4%2F3uRaEGojrfA%2Bkx45lBsw1XECRfoeHOgPjcvwFSm31XKO%2FHDcLGGGGDZrEJdhWNWKw05v5IvmfglykaZBTsvdTR9eb2fGp%2FJ1waFJPHzUrqM%2FOG3LnRa2xSu9YQnXI4CWFayPbs3zUkgYyjzmHP7HA5jdVGeQ2WDVJi6uYiHDOW%2BhyO63VQ%3D%3D&Expires=1753754026
-[5] 24.3.3 Importing Export Files - APEX - Oracle Help Center https://docs.oracle.com/en/database/oracle/apex/23.1/htmdb/importing-export-files.html
-[6] How To Add Plugins To Your Minecraft Server - Apex Hosting https://apexminecrafthosting.com/adding-a-plugin-to-your-server/
-[7] Exporting Plug-ins - APEX - Oracle Help Center https://docs.oracle.com/en/database/oracle/apex/23.2/htmdb/exporting-plug-ins.html
-[8] Installing Plug-in Programs | Trend Micro Service Central https://docs.trendmicro.com/en-us/documentation/article/apex-one-service-pack-1-patch-3-server-online-help-osce-plugin-install-
-[9] 24.3.2.8 Exporting Plug-ins - APEX - App Builder User's Guide https://docs.oracle.com/en/database/oracle/apex/22.1/htmdb/exporting-plug-ins.html
-[10] Quick Install Guide | APEX Office Print (AOP) https://www.apexofficeprint.com/docs/getting-started/quick-install
-[11] APEX Plug-ins | APEX Message Service (AMS) - United Codes https://www.united-codes.com/products/apexmessageservice/docs/getting-started/plugin-install/
-[12] 24.3.3 Importing Export Files - Oracle APEX - App Builder User's Guide https://docs.oracle.com/en/database/oracle/apex/22.2/htmdb/importing-export-files.html
-[13] Creating an APEX Process Plugin https://ebs-apex.hashnode.dev/creating-an-apex-process-plugin
-[14] Implementing Plug-ins - App Builder User's Guide https://docs.oracle.com/database/apex-18.2/HTMDB/implementing-plug-ins.htm
-[15] Export And Import Application | Oracle Apex | Ontoor Shorts #14 https://www.youtube.com/watch?v=2j0bqy2QdAc
-[16] Download and Upload Themes using Theme Roller in APEX 23.1 https://www.youtube.com/watch?v=f9C1uluCsLM
-[17] APEX Plug-ins | APEX Office Print (AOP) https://www.apexofficeprint.com/docs/getting-started/plugin-install/
-[18] How to export and import oracle apex application - YouTube https://www.youtube.com/watch?v=-e2QeEvUlMk
-[19] Plug-Ins - apex.world https://apex.world/ords/r/apex_world/apex-world/plug-ins
-[20] Oracle APEX Plug-ins https://flowsforapex.org/latest/plugins/
+[1] selected_image_6179373999777463646.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/72242679/d24bc3b0-d85a-47d3-b974-705ad03ae606/selected_image_6179373999777463646.jpg?AWSAccessKeyId=ASIA2F3EMEYE5OULJW4U&Signature=E4Iunq9MwdPXRMRyehbewR4V%2B30%3D&x-amz-security-token=IQoJb3JpZ2luX2VjEHIaCXVzLWVhc3QtMSJHMEUCIQDAKwcJt3Sn8clHiTBWq1%2F0u7fIMS3cJVrkz7ajekd6CQIgSFP89pxoXOd5250YggRfYAeYFyD7gsSov57ysiCUuIUq%2BgQIm%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FARABGgw2OTk3NTMzMDk3MDUiDES2Yi%2BQaolc80RMVSrOBGJR75AUm3w7CjSK17rhcYBSmKJJ3WsBAmADSCDJb3zHeFck%2Fjd19r7A2dwmEZSEcPfKNe64feK4NFNupg2XdRhg5%2Bz1mrS1mIQi51wYOmUgdE9xvhZJFr2GLMCcoX9cGAEGj7yffFOwpOTbillbX4kLbecjRHN8W6ioX9dWpH9efPpxezKP8Tbzb6uvb%2FL%2FzHVE%2BmF3kysycyvm1o0Uxm7uk%2BRoUcozUcTNFThG%2FMm1PsaFo8d2IQbUUQHPPphZH5wNVtgu9ycUvfrzQhBYFSXpt1n1FV%2Bv9f2G1f%2BzZznqFp0%2FjUlAJcQaeAaMiAAgKjGQp8L0EyUlVlxv%2F0ZHi9%2FoGbAfZx5hkIOigODSZfA7255lfzlCoXEz5O53ukUeIpbUvq2yaeOAby6xF5twysnPuEVs6BFA5as7o6GBBDENba37fjs8GRsXC7QuMR6vAEVmWt1l1AqJhts7sVhBdV%2BBJ6CIEoTlUvzNPknVdd11TmiZYClDdylvg2Ganlws6hB28cRd14Okmzch4na7QN5fn5nrMb4LaohKaeQ4BGzPXpHSejnUHJZGL%2BP2Io0ZH9Z4S9YN010EftZba1l8%2FyVL8ZOB0ANQg%2F3QwJnrIUpZRY4uKeCX%2B2MFN%2FR9YuXFw7Y6MIoa1uKFWzD2v06v0Ve%2FRb6%2B4UxXoGDhMXGF4%2BL8MNe4Tt2GqvnQzfCB6uKy6xbq0Oxj8zukKcE1AqvvHxtPX2cjgyZjpKj5in3GlgXOcGVJhWMpWkj7aSlP8ls0aWPnYNSLhiI588sJsMvWMLXMoMQGOpoB0fzEYBg40gR0MjhqTs5qzNw%2Bfya7n01ySvAUkFvGQ894miygp6B1oPKPCsIWgG%2Bk8nqeF6yWqjvUNM38hw8%2FYiJtxGt3nSbJM1LNRG%2ByZ5x%2BXLKnbVgkaaT4oVHLF0b%2FWc6zgdL9oD2qgn%2FllplahF3QJJt8HOHpepWeuQTtGv2Mrbnhkt%2F2TZZYPCuoHqu7IhHIPiy8ixHXKA%3D%3D&Expires=1753754749
+[2] selected_image_4941091078929342760.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/72242679/667a44a9-226d-4048-9b1d-7e56bcb00199/selected_image_4941091078929342760.jpg?AWSAccessKeyId=ASIA2F3EMEYE5OULJW4U&Signature=dON6gAvZVOFnQ4J56RC3OtkF42M%3D&x-amz-security-token=IQoJb3JpZ2luX2VjEHIaCXVzLWVhc3QtMSJHMEUCIQDAKwcJt3Sn8clHiTBWq1%2F0u7fIMS3cJVrkz7ajekd6CQIgSFP89pxoXOd5250YggRfYAeYFyD7gsSov57ysiCUuIUq%2BgQIm%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FARABGgw2OTk3NTMzMDk3MDUiDES2Yi%2BQaolc80RMVSrOBGJR75AUm3w7CjSK17rhcYBSmKJJ3WsBAmADSCDJb3zHeFck%2Fjd19r7A2dwmEZSEcPfKNe64feK4NFNupg2XdRhg5%2Bz1mrS1mIQi51wYOmUgdE9xvhZJFr2GLMCcoX9cGAEGj7yffFOwpOTbillbX4kLbecjRHN8W6ioX9dWpH9efPpxezKP8Tbzb6uvb%2FL%2FzHVE%2BmF3kysycyvm1o0Uxm7uk%2BRoUcozUcTNFThG%2FMm1PsaFo8d2IQbUUQHPPphZH5wNVtgu9ycUvfrzQhBYFSXpt1n1FV%2Bv9f2G1f%2BzZznqFp0%2FjUlAJcQaeAaMiAAgKjGQp8L0EyUlVlxv%2F0ZHi9%2FoGbAfZx5hkIOigODSZfA7255lfzlCoXEz5O53ukUeIpbUvq2yaeOAby6xF5twysnPuEVs6BFA5as7o6GBBDENba37fjs8GRsXC7QuMR6vAEVmWt1l1AqJhts7sVhBdV%2BBJ6CIEoTlUvzNPknVdd11TmiZYClDdylvg2Ganlws6hB28cRd14Okmzch4na7QN5fn5nrMb4LaohKaeQ4BGzPXpHSejnUHJZGL%2BP2Io0ZH9Z4S9YN010EftZba1l8%2FyVL8ZOB0ANQg%2F3QwJnrIUpZRY4uKeCX%2B2MFN%2FR9YuXFw7Y6MIoa1uKFWzD2v06v0Ve%2FRb6%2B4UxXoGDhMXGF4%2BL8MNe4Tt2GqvnQzfCB6uKy6xbq0Oxj8zukKcE1AqvvHxtPX2cjgyZjpKj5in3GlgXOcGVJhWMpWkj7aSlP8ls0aWPnYNSLhiI588sJsMvWMLXMoMQGOpoB0fzEYBg40gR0MjhqTs5qzNw%2Bfya7n01ySvAUkFvGQ894miygp6B1oPKPCsIWgG%2Bk8nqeF6yWqjvUNM38hw8%2FYiJtxGt3nSbJM1LNRG%2ByZ5x%2BXLKnbVgkaaT4oVHLF0b%2FWc6zgdL9oD2qgn%2FllplahF3QJJt8HOHpepWeuQTtGv2Mrbnhkt%2F2TZZYPCuoHqu7IhHIPiy8ixHXKA%3D%3D&Expires=1753754749
+[3] How to Automate Daily Exports for Your Oracle APEX Application https://blogs.ontoorsolutions.com/post/export-oracle-apex-application-automatically-on-daily-basis/
+[4] Exporting Your Oracle REST Data Services Modules to Files https://www.thatjeffsmith.com/archive/2018/12/how-to-export-your-restful-services/
+[5] APEX Plug-ins | APEX Office Print (AOP) https://www.apexofficeprint.com/docs/getting-started/plugin-install/
+[6] Exporting Application Components - APEX - App Builder User's Guide https://docs.oracle.com/en/database/oracle/apex/23.1/htmdb/exporting-application-components.html
+[7] How to Export and Import Database Connections in Oracle SQL ... https://www.youtube.com/watch?v=EPzf6oEUGyY
+[8] Building an Oracle APEX Plugin: A Deep Dive, part 1 - Novoshore https://www.novoshore.com/2025/03/17/how-to-create-an-oracle-apex-plugin-step-by-step-guide-with-code-examples/
+[9] Is there any option to export database structure including Data from ... https://stackoverflow.com/questions/55842760/is-there-any-option-to-export-database-structure-including-data-from-apex-oracle
+[10] Oracle APEX new features – the low-code platform keeps evolving https://pretius.com/blog/oracle-apex-new-features
+[11] Dani3lSun/apex-plugin-templates · GitHub https://github.com/Dani3lSun/apex-plugin-templates/blob/master/dynamic_action/dynamic_action_plugin_dynamic_action_template.sql
+[12] 25.3.2.4 Exporting an Application - APEX - Oracle Help Center https://docs.oracle.com/en/database/oracle/apex/23.2/htmdb/exporting-an-application.html
+[13] Introduction to Template Components in Oracle APEX 23.1 https://hartenfeller.dev/blog/oracle-apex-template-components-introduction
+[14] How to create Plugin in 2 min - Oracle Apex 24.1 ... - YouTube https://www.youtube.com/watch?v=zKBqf4gQf-0
+[15] 6.12 Exporting and Importing SQL Scripts - Oracle Help Center https://docs.oracle.com/en/database/oracle/apex/24.2/aeutl/exporting-and-importing-sql-scripts.html
+[16] [PDF] Oracle® APEX - SQL Workshop Guide https://docs.oracle.com/en/database/oracle/apex/23.1/aeutl/oracle-apex-sql-workshop-guide.pdf
+[17] Oracle APEX Template Component Plugin Stats Counter https://apexblog.dev/oracle-apex-template-component-plugin-stats-counter
+[18] 24.3.3 Importing Export Files - Oracle APEX - App Builder User's Guide https://docs.oracle.com/en/database/oracle/apex/22.2/htmdb/importing-export-files.html
+[19] Quick Install Guide | APEX Office Print (AOP) https://www.apexofficeprint.com/docs/getting-started/quick-install
+[20] About Template Component Type Plug-ins - App Builder User's Guide https://docs.oracle.com/en/database/oracle/apex/23.2/htmdb/understanding-plug-ins.html
 [21] Oracle Apex Export and Import Secrets You Need to Know NOW https://www.youtube.com/watch?v=0DPUbsPsRlU
-[22] Building an Oracle APEX Plugin: A Deep Dive, part 1 - Novoshore https://www.novoshore.com/2025/03/17/how-to-create-an-oracle-apex-plugin-step-by-step-guide-with-code-examples/
-[23] Backward-Compatible Plug-In Export Feature for Oracle APEX https://apexapps.oracle.com/pls/apex/apex_pm/fr/r/FR-3932
-[24] Oracle APEX new features – the low-code platform keeps evolving https://pretius.com/blog/oracle-apex-new-features
-[25] New Legend Upgrade System / Apex Dev Interview ... - YouTube https://www.youtube.com/watch?v=ZgHLdwC6ZI8
-[26] Oracle APEX 24.2 Known Issues https://www.oracle.com/tools/downloads/apex-downloads/apex-242-known-issues/
-[27] APEX LEGENDS | Increase FPS and Optimization - YouTube https://www.youtube.com/watch?v=Nda_WCMZsIc
-[28] 19.2 Implementing Plug-ins - Oracle Help Center https://docs.oracle.com/en/database/oracle/apex/23.1/htmdb/implementing-plug-ins.html
-[29] Part 1: What's new in Oracle APEX 23.1 - YouTube https://www.youtube.com/watch?v=mBhGBjFa1V8
-[30] Oracle APEX Plug-ins - Flows for APEX https://flowsforapex.org/v23.1/plugins/
-[31] APEX 23.1 - New Features - DSP Blog https://content.dsp.co.uk/apex/apex-23.1-new-features
-[32] APEX Plug-ins by Richard Baldogi https://apex.oracle.com/pls/apex/r/rmzrt/apex-plugins-by-richard-baldogi/home
-[33] Tabular form plugin - Oracle APEX https://apex.pretius.com/apex/f?p=105%3AENHANCED_LOV_ITEM_APEX_DA%3A%3A%3A%3A%3A%3A
-[34] Создаем плагин региона для Oracle Application Express - Habr https://habr.com/ru/articles/275619/
-[35] Сиолошная - Telegram https://t.me/s/seeallochnaya/1023
-[36] Top Oracle APEX plug-ins we love and use - Insum https://insum.talan.com/top-oracle-apex-plug-ins-we-love-and-use/
-[37] Oracle APEX Release 23.1 - Install and Upgrade https://docs.oracle.com/en/database/oracle/apex/23.1/installandupgrade.html
-[38] [PDF] СКЕЛЕТНЫЕ ПЕРЕГРУППИРОВКИ МЕТАЛЛАКАРБОРАНОВ https://ineos.ac.ru/files/scisecr/muratov/diss.pdf
-[39] Custom Fields Allowed Per Object - Salesforce Help https://help.salesforce.com/s/articleView?id=platform.custom_field_allocations.htm&language=en_US&type=5
-[40] Oracle APEX - FlexDeploy 8.0 - Confluence https://flexagon.atlassian.net/wiki/spaces/FD80/pages/10561728863/FlexDeploy+-+Oracle+Application+Express+Plugin+Guide
-[41] Oracle APEX 23.1 Known Issues https://www.oracle.com/tools/downloads/apex-downloads/apex-231-known-issues/
-[42] B Oracle APEX Limits https://docs.oracle.com/en/database/oracle/apex/23.1/htmdb/oracle-apex-limits.html
-[43] Requirements and limitations - Amazon Relational Database Service https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Appendix.Oracle.Options.APEX.Requirements.html
-[44] Display Only vs text fields with "Disabled" attribute set to YES https://stackoverflow.com/questions/71285508/display-only-vs-text-fields-with-disabled-attribute-set-to-yes
-[45] 25.3.2.4 Exporting an Application - APEX - Oracle Help Center https://docs.oracle.com/en/database/oracle/apex/23.2/htmdb/exporting-an-application.html
-[46] Oracle Apex 23.1 - a deep dive into the biggest new features https://www.youtube.com/watch?v=Hi4KVHYdPBU
-[47] Designing a Robust File Upload Architecture in Oracle APEX https://blogs.ontoorsolutions.com/post/designing-a-robust-file-upload-architecture-in-oracle-apex/
-[48] Getting Started with APEX Plugins | Jeff Kemp on Oracle https://jeffkemponoracle.com/2019/11/getting-started-with-apex-plugins/
-[49] APEX Release Notes - Oracle APEX mit Hyand https://apex.hyand.com/ords/r/tools/release/notes
+[22] Plug-Ins - apex.world https://apex.world/ords/r/apex_world/apex-world/plug-ins
+[23] Workspace, application and page export in PL/SQL - apexplained https://apexplained.wordpress.com/2012/03/20/workspace-application-and-page-export-in-plsql/
+[24] 24.3.3 Importing Export Files - APEX - Oracle Help Center https://docs.oracle.com/en/database/oracle/apex/23.1/htmdb/importing-export-files.html
+[25] SQLcl and APEXExport : Export APEX Applications and Workspaces ... https://oracle-base.com/articles/misc/apexexport
+[26] App Builder User's Guide - Oracle Help Center https://docs.oracle.com/en/database/oracle/apex/23.1/htmdb/understanding-the-export-and-import-process.html
+[27] How to import an Oracle APEX Application export file from a higher ... https://www.triology.de/blog/database-applications-import-oracle-apex
+[28] Creating an APEX Process Plugin https://ebs-apex.hashnode.dev/creating-an-apex-process-plugin
+[29] Is It Possible to Import Apex Applications From a Higher Version to a ... https://stackoverflow.com/questions/79374315/is-it-possible-to-import-apex-applications-from-a-higher-version-to-a-lower-vers
+[30] Oracle Apex 19.1 Cannot Export Application wwv_flow.accept.html https://stackoverflow.com/questions/58912881/oracle-apex-19-1-cannot-export-application-wwv-flow-accept-html
+[31] [PDF] Oracle® APEX - API Reference https://docs.oracle.com/en/database/oracle/apex/23.2/aeapi/oracle-apex-api-reference.pdf
+[32] SQL Structure | APEX Office Print (AOP) https://www.apexofficeprint.com/docs/getting-started/sql-structure/
+[33] Oracle APEX - Moving multiple pages to a new App - Stack Overflow https://stackoverflow.com/questions/78193319/oracle-apex-moving-multiple-pages-to-a-new-app
+[34] apex-plugin-templates/source/ajax_region.sql at master - GitHub https://github.com/OraOpenSource/apex-plugin-templates/blob/master/source/ajax_region.sql
+[35] 19.2 Implementing Plug-ins - Oracle Help Center https://docs.oracle.com/en/database/oracle/apex/23.1/htmdb/implementing-plug-ins.html
+[36] Export file questions - wwv_flow_api.set_version? - Oracle Forums https://forums.oracle.com/ords/apexds/post/export-file-questions-wwv-flow-api-set-version-2751

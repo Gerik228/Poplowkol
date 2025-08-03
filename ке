@@ -1,138 +1,57 @@
-мне 
-
-## 1. Корпоративные минималистичные карточки
-
-**Описание:** Чистый, элегантный дизайн с четкой типографикой и тонкими тенями[1][2]. Использует принципы corporate identity и подходит для Enterprise-решений.
-
-**Особенности:**
-- Монохромная цветовая схема с акцентными элементами
-- Четкая иерархия информации
-- Hover-эффекты с плавными переходами
-- Адаптивность для всех устройств
-
-**HTML пример:**
-```html
-<div class="nav-cards-container">
-    <div class="corporate-card">
-        <div class="card-icon">
-            <i class="fas fa-chart-bar"></i>
-        </div>
-        <h3 class="card-title">Аналитика</h3>
-        <p class="card-description">Детальные отчеты и метрики для принятия обоснованных решений</p>
-        <div class="card-action">
-            <span class="action-arrow">→</span>
-        </div>
-    </div>
-    <!-- Повторить для других карточек -->
-</div>
-```
-
-**CSS:**
-```css
-.nav-cards-container {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 24px;
-    padding: 32px;
-    max-width: 1200px;
-    margin: 0 auto;
-}
-
-.corporate-card {
-    background: #ffffff;
-    border: 1px solid #e5e7eb;
-    border-radius: 12px;
-    padding: 32px;
-    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-    position: relative;
-    cursor: pointer;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-}
-
-.corporate-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
-    border-color: #3b82f6;
-}
-
-.card-icon {
-    width: 48px;
-    height: 48px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-size: 24px;
-    margin-bottom: 20px;
-}
-
-.card-title {
-    font-size: 20px;
-    font-weight: 600;
-    color: #1f2937;
-    margin: 0 0 12px 0;
-    line-height: 1.3;
-}
-
-.card-description {
-    font-size: 14px;
-    color: #6b7280;
-    line-height: 1.5;
-    margin: 0 0 20px 0;
-}
-
-.card-action {
-    position: absolute;
-    top: 24px;
-    right: 24px;
-    opacity: 0;
-    transition: opacity 0.3s ease;
-}
-
-.corporate-card:hover .card-action {
-    opacity: 1;
-}
-
-.action-arrow {
-    font-size: 18px;
-    color: #3b82f6;
-    font-weight: 600;
-}
-```
-
-## 2. Modern Glass Navigation Cards[3]
-
-**Описание:** Современный glassmorphism дизайн с полупрозрачными эффектами и размытием фона. Создает премиальное впечатление.
-
-**HTML пример:**
-```html
 <div class="glass-nav-container">
     <div class="glass-card">
         <div class="glass-backdrop"></div>
         <div class="glass-content">
-            <div class="glass-icon">
-                <i class="fas fa-users"></i>
+            <div class="for_text">
+                <h3 class="glass-title">Найти интересующий дашборд</h3>
+                <p class="glass-description">Для вашего удобства дашборды собраны в едином пространстве</p>
             </div>
-            <h3 class="glass-title">Управление персоналом</h3>
-            <p class="glass-description">Комплексное решение для HR-процессов и управления командой</p>
+            <div class="gr_icon">
+                <img class="img_ic" src="https://www.sberbank.ru/images/13300/1734425687306.png" alt="Dashboard Icon" />
+            </div>
+        </div>
+    </div>
+    
+    <div class="glass-card">
+        <div class="glass-backdrop"></div>
+        <div class="glass-content">
+            <div class="for_text">
+                <h3 class="glass-title">Найти интересующий дашборд</h3>
+                <p class="glass-description">Для вашего удобства дашборды собраны в едином пространстве</p>
+            </div>
+            <div class="gr_icon">
+                <img class="img_ic" src="https://www.sberbank.ru/images/13300/1734425687306.png" alt="Dashboard Icon" />
+            </div>
+        </div>
+    </div>
+    
+    <div class="glass-card">
+        <div class="glass-backdrop"></div>
+        <div class="glass-content">
+            <div class="for_text">
+                <h3 class="glass-title">Найти интересующий дашборд</h3>
+                <p class="glass-description">Для вашего удобства дашборды собраны в едином пространстве с расширенным описанием и дополнительными возможностями для более удобного использования системы</p>
+            </div>
+            <div class="gr_icon">
+                <img class="img_ic" src="https://www.sberbank.ru/images/13300/1734425687306.png" alt="Dashboard Icon" />
+            </div>
         </div>
     </div>
 </div>
-```
 
-**CSS:**
-```css
+<style>
+/* Основной контейнер с сеткой */
 .glass-nav-container {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 28px;
-    padding: 40px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 24px;
+    padding: 20px;
+    background: linear-gradient(135deg, #00f4c6 0%, #000f4c 20%, #00f4c 40%, #bd3300 100%);
     min-height: 100vh;
+    box-sizing: border-box;
 }
 
+/* Карточка с glass эффектом */
 .glass-card {
     background: rgba(255, 255, 255, 0.15);
     backdrop-filter: blur(20px) saturate(180%);
@@ -144,8 +63,14 @@
     overflow: hidden;
     cursor: pointer;
     transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    width: 100%;
+    min-height: 200px;
+    height: auto;
+    display: flex;
+    flex-direction: column;
 }
 
+/* Эффект при наведении */
 .glass-card:hover {
     transform: translateY(-8px);
     background: rgba(255, 255, 255, 0.25);
@@ -153,6 +78,7 @@
     box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
 }
 
+/* Декоративная полоса сверху */
 .glass-backdrop {
     position: absolute;
     top: 0;
@@ -160,1761 +86,240 @@
     right: 0;
     height: 2px;
     background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent);
-}
-
-.glass-content {
-    padding: 32px;
-}
-
-.glass-icon {
-    width: 64px;
-    height: 64px;
-    background: rgba(255, 255, 255, 0.2);
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    border-radius: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 28px;
-    color: rgba(255, 255, 255, 0.9);
-    margin-bottom: 24px;
-}
-
-.glass-title {
-    font-size: 22px;
-    font-weight: 600;
-    color: rgba(255, 255, 255, 0.95);
-    margin: 0 0 16px 0;
-    line-height: 1.3;
-}
-
-.glass-description {
-    font-size: 15px;
-    color: rgba(255, 255, 255, 0.8);
-    line-height: 1.6;
-    margin: 0;
-}
-```
-
-## 3. Enterprise Dashboard Navigation Tiles[4][5]
-
-**Описание:** Мощные навигационные плитки в стиле enterprise dashboard с метриками и статусными индикаторами.
-
-**HTML пример:**
-```html
-<div class="dashboard-nav-grid">
-    <div class="dashboard-tile">
-        <div class="tile-header">
-            <div class="tile-icon">
-                <i class="fas fa-tachometer-alt"></i>
-            </div>
-            <div class="tile-status active"></div>
-        </div>
-        <h3 class="tile-title">Панель управления</h3>
-        <p class="tile-description">Центральная консоль для мониторинга всех бизнес-процессов</p>
-        <div class="tile-metrics">
-            <div class="metric">
-                <span class="metric-value">94%</span>
-                <span class="metric-label">Производительность</span>
-            </div>
-            <div class="metric">
-                <span class="metric-value">1,247</span>
-                <span class="metric-label">Активные задачи</span>
-            </div>
-        </div>
-    </div>
-</div>
-```
-
-**CSS:**
-```css
-.dashboard-nav-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-    gap: 24px;
-    padding: 32px;
-}
-
-.dashboard-tile {
-    background: #ffffff;
-    border: 1px solid #e5e7eb;
-    border-radius: 16px;
-    padding: 28px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-    transition: all 0.3s ease;
-    cursor: pointer;
-    position: relative;
-}
-
-.dashboard-tile:hover {
-    transform: translateY(-6px);
-    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.15);
-    border-color: #3b82f6;
-}
-
-.tile-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 20px;
-}
-
-.tile-icon {
-    width: 56px;
-    height: 56px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border-radius: 14px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-size: 24px;
-}
-
-.tile-status {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    position: relative;
-}
-
-.tile-status.active {
-    background: #10b981;
-    animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-    0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
-    70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
-}
-
-.tile-title {
-    font-size: 20px;
-    font-weight: 600;
-    color: #1f2937;
-    margin: 0 0 12px 0;
-}
-
-.tile-description {
-    font-size: 14px;
-    color: #6b7280;
-    line-height: 1.5;
-    margin: 0 0 24px 0;
-}
-
-.tile-metrics {
-    display: flex;
-    justify-content: space-between;
-    padding-top: 20px;
-    border-top: 1px solid #f3f4f6;
-}
-
-.metric {
-    text-align: center;
-}
-
-.metric-value {
-    display: block;
-    font-size: 18px;
-    font-weight: 700;
-    color: #1f2937;
-    margin-bottom: 4px;
-}
-
-.metric-label {
-    font-size: 12px;
-    color: #9ca3af;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-```
-
-## 4. Card-Based Navigation System[1][6]
-
-**Описание:** Современная карточная навигация с использованием принципов Material Design и четкой информационной архитектурой.
-
-**HTML пример:**
-```html
-<div class="card-nav-system">
-    <div class="nav-card primary">
-        <div class="card-media">
-            <div class="media-icon">💼</div>
-        </div>
-        <div class="card-content">
-            <h3 class="card-heading">Корпоративные решения</h3>
-            <p class="card-text">Интегрированная платформа для управления бизнес-процессами предприятия</p>
-            <div class="card-tags">
-                <span class="tag">ERP</span>
-                <span class="tag">CRM</span>
-                <span class="tag">Analytics</span>
-            </div>
-        </div>
-        <div class="card-actions">
-            <button class="card-btn">Перейти</button>
-        </div>
-    </div>
-</div>
-```
-
-**CSS:**
-```css
-.card-nav-system {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 24px;
-    padding: 32px;
-}
-
-.nav-card {
-    background: #ffffff;
-    border-radius: 12px;
-    overflow: hidden;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-    cursor: pointer;
-}
-
-.nav-card:hover {
-    transform: translateY(-8px);
-    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.15);
-}
-
-.card-media {
-    height: 120px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-}
-
-.media-icon {
-    font-size: 48px;
-}
-
-.card-content {
-    padding: 24px;
-}
-
-.card-heading {
-    font-size: 20px;
-    font-weight: 600;
-    color: #1f2937;
-    margin: 0 0 12px 0;
-}
-
-.card-text {
-    font-size: 14px;
-    color: #6b7280;
-    line-height: 1.6;
-    margin: 0 0 20px 0;
-}
-
-.card-tags {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 20px;
-}
-
-.tag {
-    background: #f3f4f6;
-    color: #6b7280;
-    padding: 4px 12px;
-    border-radius: 16px;
-    font-size: 12px;
-    font-weight: 500;
-}
-
-.card-actions {
-    padding: 0 24px 24px;
-}
-
-.card-btn {
-    background: #3b82f6;
-    color: white;
-    border: none;
-    padding: 12px 24px;
-    border-radius: 8px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background 0.2s ease;
-    width: 100%;
-}
-
-.card-btn:hover {
-    background: #2563eb;
-}
-```
-
-## 5. Floating Navigation Cards[7]
-
-**Описание:** Парящие карточки с эффектом глубины и динамическими тенями для создания современного 3D-эффекта.
-
-**HTML пример:**
-```html
-<div class="floating-nav-container">
-    <div class="floating-card" data-tilt>
-        <div class="floating-background"></div>
-        <div class="floating-content">
-            <div class="floating-icon">
-                <i class="fas fa-cogs"></i>
-            </div>
-            <h3 class="floating-title">Системные настройки</h3>
-            <p class="floating-description">Конфигурация и администрирование корпоративных систем</p>
-            <div class="floating-indicator">
-                <div class="indicator-dot"></div>
-                <span class="indicator-text">Доступно</span>
-            </div>
-        </div>
-    </div>
-</div>
-```
-
-**CSS:**
-```css
-.floating-nav-container {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 32px;
-    padding: 40px;
-    perspective: 1000px;
-}
-
-.floating-card {
-    background: #ffffff;
-    border-radius: 20px;
-    padding: 32px;
-    box-shadow: 
-        0 10px 30px rgba(0, 0, 0, 0.1),
-        0 1px 8px rgba(0, 0, 0, 0.06);
-    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    position: relative;
-    cursor: pointer;
-    transform-style: preserve-3d;
-    animation: float 6s ease-in-out infinite;
-}
-
-@keyframes float {
-    0%, 100% { transform: translateY(0px) rotateX(0deg) rotateY(0deg); }
-    50% { transform: translateY(-10px) rotateX(2deg) rotateY(1deg); }
-}
-
-.floating-card:hover {
-    transform: translateY(-20px) rotateX(-5deg) rotateY(5deg) scale(1.02);
-    box-shadow: 
-        0 30px 60px rgba(0, 0, 0, 0.2),
-        0 0 0 1px rgba(255, 255, 255, 0.8);
-}
-
-.floating-background {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: linear-gradient(45deg, 
-        rgba(255, 255, 255, 0.1), 
-        rgba(255, 255, 255, 0.05)
-    );
-    border-radius: 20px;
-    opacity: 0;
-    transition: opacity 0.3s ease;
-}
-
-.floating-card:hover .floating-background {
-    opacity: 1;
-}
-
-.floating-content {
-    position: relative;
     z-index: 1;
 }
 
-.floating-icon {
-    width: 64px;
-    height: 64px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border-radius: 16px;
+/* Основной контент карточки */
+.glass-content {
     display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-size: 28px;
-    margin-bottom: 24px;
-    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
-    transform: translateZ(20px);
-}
-
-.floating-title {
-    font-size: 22px;
-    font-weight: 600;
-    color: #1f2937;
-    margin: 0 0 16px 0;
-    transform: translateZ(10px);
-}
-
-.floating-description {
-    font-size: 15px;
-    color: #6b7280;
-    line-height: 1.6;
-    margin: 0 0 24px 0;
-    transform: translateZ(5px);
-}
-
-.floating-indicator {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    transform: translateZ(15px);
-}
-
-.indicator-dot {
-    width: 8px;
-    height: 8px;
-    background: #10b981;
-    border-radius: 50%;
-    animation: pulse 2s infinite;
-}
-
-.indicator-text {
-    font-size: 12px;
-    color: #10b981;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-```
-
-## 6. Neumorphism Corporate Cards
-
-**Описание:** Мягкий неоморфный дизайн с вдавленными и выпуклыми элементами для создания тактильного ощущения.
-
-**HTML пример:**
-```html
-<div class="neomorphism-nav">
-    <div class="neuro-card">
-        <div class="neuro-icon">
-            <i class="fas fa-chart-line"></i>
-        </div>
-        <h3 class="neuro-title">Бизнес-аналитика</h3>
-        <p class="neuro-description">Интеллектуальные инструменты для анализа и прогнозирования</p>
-        <button class="neuro-button">Открыть</button>
-    </div>
-</div>
-```
-
-**CSS:**
-```css
-:root {
-    --neuro-bg: #e0e5ec;
-    --neuro-light: #ffffff;
-    --neuro-dark: #a3b1c6;
-}
-
-.neomorphism-nav {
-    background: var(--neuro-bg);
-    padding: 40px;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 32px;
-    min-height: 100vh;
-}
-
-.neuro-card {
-    background: var(--neuro-bg);
-    border-radius: 24px;
-    padding: 36px;
-    box-shadow: 
-        12px 12px 24px var(--neuro-dark),
-        -12px -12px 24px var(--neuro-light);
-    transition: all 0.3s ease;
-    cursor: pointer;
-}
-
-.neuro-card:hover {
-    box-shadow: 
-        16px 16px 32px var(--neuro-dark),
-        -16px -16px 32px var(--neuro-light);
-}
-
-.neuro-icon {
-    width: 80px;
-    height: 80px;
-    border-radius: 20px;
-    background: var(--neuro-bg);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 
-        inset 8px 8px 16px var(--neuro-dark),
-        inset -8px -8px 16px var(--neuro-light);
-    margin-bottom: 24px;
-    font-size: 32px;
-    color: #667eea;
-}
-
-.neuro-title {
-    font-size: 22px;
-    font-weight: 600;
-    color: #2d3748;
-    margin: 0 0 16px 0;
-}
-
-.neuro-description {
-    font-size: 15px;
-    color: #718096;
-    line-height: 1.6;
-    margin: 0 0 28px 0;
-}
-
-.neuro-button {
-    background: var(--neuro-bg);
-    border: none;
-    border-radius: 16px;
-    padding: 16px 32px;
-    box-shadow: 
-        6px 6px 12px var(--neuro-dark),
-        -6px -6px 12px var(--neuro-light);
-    color: #2d3748;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    width: 100%;
-}
-
-.neuro-button:active {
-    box-shadow: 
-        inset 4px 4px 8px var(--neuro-dark),
-        inset -4px -4px 8px var(--neuro-light);
-}
-```
-
-## 7. Progressive Web App Navigation[8]
-
-**Описание:** Современные карточки в стиле PWA с прогрессивными элементами и mobile-first подходом.
-
-**HTML пример:**
-```html
-<div class="pwa-nav-grid">
-    <div class="pwa-card">
-        <div class="pwa-header">
-            <div class="pwa-badge">Beta</div>
-            <div class="pwa-menu">⋯</div>
-        </div>
-        <div class="pwa-icon-container">
-            <div class="pwa-icon">
-                <i class="fas fa-mobile-alt"></i>
-            </div>
-        </div>
-        <h3 class="pwa-title">Мобильные решения</h3>
-        <p class="pwa-description">Кроссплатформенные приложения для мобильных устройств</p>
-        <div class="pwa-progress">
-            <div class="progress-bar" style="width: 75%"></div>
-        </div>
-        <div class="pwa-stats">
-            <div class="stat">
-                <span class="stat-number">75%</span>
-                <span class="stat-label">Готовность</span>
-            </div>
-            <div class="stat">
-                <span class="stat-number">12</span>
-                <span class="stat-label">Модулей</span>
-            </div>
-        </div>
-    </div>
-</div>
-```
-
-**CSS:**
-```css
-.pwa-nav-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 20px;
-    padding: 24px;
-}
-
-.pwa-card {
-    background: #ffffff;
-    border-radius: 16px;
-    padding: 24px;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-    border: 1px solid #f1f3f4;
-    transition: all 0.3s ease;
-    cursor: pointer;
-}
-
-.pwa-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-    border-color: #4285f4;
-}
-
-.pwa-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-}
-
-.pwa-badge {
-    background: #4285f4;
-    color: white;
-    padding: 4px 12px;
-    border-radius: 12px;
-    font-size: 11px;
-    font-weight: 500;
-    text-transform: uppercase;
-}
-
-.pwa-menu {
-    color: #5f6368;
-    font-size: 18px;
-    cursor: pointer;
-    padding: 4px;
-}
-
-.pwa-icon-container {
-    display: flex;
-    justify-content: center;
-    margin-bottom: 20px;
-}
-
-.pwa-icon {
-    width: 64px;
-    height: 64px;
-    background: linear-gradient(135deg, #4285f4 0%, #34a853 100%);
-    border-radius: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-size: 28px;
-    box-shadow: 0 4px 16px rgba(66, 133, 244, 0.3);
-}
-
-.pwa-title {
-    font-size: 18px;
-    font-weight: 500;
-    color: #202124;
-    margin: 0 0 12px 0;
-    text-align: center;
-}
-
-.pwa-description {
-    font-size: 14px;
-    color: #5f6368;
-    line-height: 1.5;
-    margin: 0 0 20px 0;
-    text-align: center;
-}
-
-.pwa-progress {
-    width: 100%;
-    height: 4px;
-    background: #f1f3f4;
-    border-radius: 2px;
-    margin-bottom: 16px;
-    overflow: hidden;
-}
-
-.progress-bar {
-    height: 100%;
-    background: linear-gradient(90deg, #4285f4, #34a853);
-    border-radius: 2px;
-    transition: width 0.3s ease;
-}
-
-.pwa-stats {
-    display: flex;
-    justify-content: space-around;
-}
-
-.stat {
-    text-align: center;
-}
-
-.stat-number {
-    display: block;
-    font-size: 16px;
-    font-weight: 500;
-    color: #202124;
-    margin-bottom: 4px;
-}
-
-.stat-label {
-    font-size: 12px;
-    color: #5f6368;
-}
-```
-
-## 8. Gradient Corporate Navigation[2]
-
-**Описание:** Яркие градиентные карточки с корпоративными цветами для создания динамичного и современного интерфейса.
-
-**HTML пример:**
-```html
-<div class="gradient-nav-container">
-    <div class="gradient-card blue-gradient">
-        <div class="gradient-overlay"></div>
-        <div class="gradient-content">
-            <div class="gradient-icon">🏢</div>
-            <h3 class="gradient-title">Корпоративный портал</h3>
-            <p class="gradient-description">Единая точка доступа ко всем корпоративным ресурсам и сервисам</p>
-            <div class="gradient-features">
-                <span class="feature">SSO</span>
-                <span class="feature">API</span>
-                <span class="feature">24/7</span>
-            </div>
-        </div>
-    </div>
-</div>
-```
-
-**CSS:**
-```css
-.gradient-nav-container {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-    gap: 28px;
-    padding: 36px;
-    background: #f8fafc;
-}
-
-.gradient-card {
-    border-radius: 20px;
-    padding: 32px;
+    flex: 1;
+    align-items: stretch;
+    min-height: 0;
     position: relative;
-    overflow: hidden;
-    color: white;
-    cursor: pointer;
-    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    min-height: 280px;
+}
+
+/* Текстовая часть */
+.for_text {
+    flex: 1;
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
+    padding: 24px;
+    padding-right: 12px;
+    justify-content: flex-start;
+    min-width: 0;
+    box-sizing: border-box;
 }
 
-.blue-gradient {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-}
-
-.gradient-card:hover {
-    transform: translateY(-12px) scale(1.03);
-    box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25);
-}
-
-.gradient-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(255, 255, 255, 0.1);
-    opacity: 0;
-    transition: opacity 0.3s ease;
-}
-
-.gradient-card:hover .gradient-overlay {
-    opacity: 1;
-}
-
-.gradient-content {
-    position: relative;
-    z-index: 1;
-}
-
-.gradient-icon {
-    font-size: 48px;
-    margin-bottom: 20px;
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-}
-
-.gradient-title {
-    font-size: 24px;
-    font-weight: 700;
-    margin: 0 0 16px 0;
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-}
-
-.gradient-description {
-    font-size: 16px;
-    line-height: 1.6;
-    opacity: 0.9;
-    margin: 0 0 24px 0;
-}
-
-.gradient-features {
-    display: flex;
-    gap: 12px;
-}
-
-.feature {
-    background: rgba(255, 255, 255, 0.2);
-    padding: 6px 16px;
-    border-radius: 20px;
-    font-size: 12px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.3);
-}
-```
-
-## 9. Smart Enterprise Cards[4]
-
-**Описание:** Интеллектуальные карточки с индикаторами состояния, уведомлениями и интеграцией с корпоративными системами.
-
-**HTML пример:**
-```html
-<div class="smart-nav-system">
-    <div class="smart-card">
-        <div class="smart-header">
-            <div class="smart-title-group">
-                <h3 class="smart-title">Система документооборота</h3>
-                <div class="smart-subtitle">ECM Platform</div>
-            </div>
-            <div class="smart-indicator">
-                <div class="indicator-status online"></div>
-                <div class="notification-badge">3</div>
-            </div>
-        </div>
-        <div class="smart-body">
-            <p class="smart-description">Электронный документооборот и управление корпоративным контентом</p>
-            <div class="smart-metrics">
-                <div class="metric-item">
-                    <div class="metric-icon">📄</div>
-                    <div class="metric-info">
-                        <div class="metric-value">1,247</div>
-                        <div class="metric-label">Документов</div>
-                    </div>
-                </div>
-                <div class="metric-item">
-                    <div class="metric-icon">⚡</div>
-                    <div class="metric-info">
-                        <div class="metric-value">98%</div>
-                        <div class="metric-label">Доступность</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="smart-footer">
-            <div class="smart-actions">
-                <button class="action-btn primary">Открыть</button>
-                <button class="action-btn secondary">Настройки</button>
-            </div>
-        </div>
-    </div>
-</div>
-```
-
-**CSS:**
-```css
-.smart-nav-system {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
-    gap: 24px;
-    padding: 32px;
-}
-
-.smart-card {
-    background: #ffffff;
-    border: 1px solid #e5e7eb;
-    border-radius: 16px;
-    overflow: hidden;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
-    transition: all 0.3s ease;
-    cursor: pointer;
-}
-
-.smart-card:hover {
-    transform: translateY(-6px);
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.15);
-    border-color: #3b82f6;
-}
-
-.smart-header {
-    padding: 24px 24px 0;
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-}
-
-.smart-title {
-    font-size: 18px;
-    font-weight: 600;
-    color: #1f2937;
-    margin: 0 0 4px 0;
-}
-
-.smart-subtitle {
-    font-size: 12px;
-    color: #9ca3af;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    font-weight: 500;
-}
-
-.smart-indicator {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    position: relative;
-}
-
-.indicator-status {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    position: relative;
-}
-
-.indicator-status.online {
-    background: #10b981;
-    animation: pulse 2s infinite;
-}
-
-.notification-badge {
-    background: #ef4444;
-    color: white;
-    font-size: 10px;
-    font-weight: 600;
-    padding: 2px 6px;
-    border-radius: 10px;
-    min-width: 18px;
-    text-align: center;
-}
-
-.smart-body {
-    padding: 20px 24px;
-}
-
-.smart-description {
-    font-size: 14px;
-    color: #6b7280;
-    line-height: 1.5;
-    margin: 0 0 20px 0;
-}
-
-.smart-metrics {
-    display: flex;
-    gap: 16px;
-    margin-bottom: 16px;
-}
-
-.metric-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex: 1;
-}
-
-.metric-icon {
-    font-size: 20px;
-}
-
-.metric-value {
-    font-size: 16px;
-    font-weight: 600;
-    color: #1f2937;
-    line-height: 1;
-}
-
-.metric-label {
-    font-size: 12px;
-    color: #9ca3af;
-}
-
-.smart-footer {
-    padding: 0 24px 24px;
-}
-
-.smart-actions {
-    display: flex;
-    gap: 12px;
-}
-
-.action-btn {
-    flex: 1;
-    padding: 10px 16px;
-    border-radius: 8px;
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    border: none;
-}
-
-.action-btn.primary {
-    background: #3b82f6;
-    color: white;
-}
-
-.action-btn.primary:hover {
-    background: #2563eb;
-}
-
-.action-btn.secondary {
-    background: #f9fafb;
-    color: #374151;
-    border: 1px solid #d1d5db;
-}
-
-.action-btn.secondary:hover {
-    background: #f3f4f6;
-}
-```
-
-## 10. Micro-Interaction Navigation[9]
-
-**Описание:** Карточки с богатыми микро-взаимодействиями, анимированными элементами и отзывчивыми состояниями.
-
-**HTML пример:**
-```html
-<div class="micro-nav-container">
-    <div class="micro-card" data-card="analytics">
-        <div class="micro-background">
-            <div class="bg-pattern"></div>
-        </div>
-        <div class="micro-content">
-            <div class="micro-icon-wrapper">
-                <div class="micro-icon">
-                    <i class="fas fa-chart-bar"></i>
-                </div>
-                <div class="icon-ripple"></div>
-            </div>
-            <h3 class="micro-title">Аналитическая панель</h3>
-            <p class="micro-description">Комплексный анализ данных с интерактивными отчетами</p>
-            <div class="micro-progress">
-                <div class="progress-circle">
-                    <svg class="progress-ring" width="40" height="40">
-                        <circle class="progress-ring-circle" stroke="#3b82f6" stroke-width="3" fill="transparent" r="16" cx="20" cy="20"/>
-                    </svg>
-                    <span class="progress-text">87%</span>
-                </div>
-                <div class="progress-info">
-                    <div class="progress-label">Загрузка данных</div>
-                </div>
-            </div>
-        </div>
-        <div class="micro-overlay">
-            <div class="overlay-content">
-                <button class="overlay-btn">Открыть панель</button>
-            </div>
-        </div>
-    </div>
-</div>
-```
-
-**CSS:**
-```css
-.micro-nav-container {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 28px;
-    padding: 36px;
-}
-
-.micro-card {
-    background: #ffffff;
-    border-radius: 20px;
-    padding: 0;
-    position: relative;
-    overflow: hidden;
-    cursor: pointer;
-    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-    height: 320px;
-}
-
-.micro-card:hover {
-    transform: translateY(-12px);
-    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.2);
-}
-
-.micro-background {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 120px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    overflow: hidden;
-}
-
-.bg-pattern {
-    position: absolute;
-    top: -50%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    background: radial-gradient(circle, rgba(255,255,255,0.1) 1px, transparent 1px);
-    background-size: 20px 20px;
-    animation: patternMove 20s linear infinite;
-}
-
-@keyframes patternMove {
-    0% { transform: translate(0, 0); }
-    100% { transform: translate(20px, 20px); }
-}
-
-.micro-content {
-    padding: 32px;
-    position: relative;
-    z-index: 2;
-}
-
-.micro-icon-wrapper {
-    position: relative;
-    display: inline-block;
-    margin-bottom: 24px;
-}
-
-.micro-icon {
-    width: 64px;
-    height: 64px;
-    background: rgba(255, 255, 255, 0.2);
-    border: 2px solid rgba(255, 255, 255, 0.3);
-    border-radius: 16px;
+/* Контейнер для иконки */
+.gr_icon {
+    flex-shrink: 0;
+    width: 120px;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: white;
-    font-size: 28px;
-    backdrop-filter: blur(10px);
-}
-
-.icon-ripple {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 64px;
-    height: 64px;
-    border: 2px solid rgba(255, 255, 255, 0.5);
-    border-radius: 50%;
-    transform: translate(-50%, -50%) scale(0);
-    animation: ripple 2s infinite;
-}
-
-@keyframes ripple {
-    0% {
-        transform: translate(-50%, -50%) scale(0);
-        opacity: 1;
-    }
-    100% {
-        transform: translate(-50%, -50%) scale(2);
-        opacity: 0;
-    }
-}
-
-.micro-title {
-    font-size: 20px;
-    font-weight: 600;
-    color: #1f2937;
-    margin: 0 0 12px 0;
-}
-
-.micro-description {
-    font-size: 14px;
-    color: #6b7280;
-    line-height: 1.5;
-    margin: 0 0 24px 0;
-}
-
-.micro-progress {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-}
-
-.progress-circle {
+    padding: 24px 24px 24px 12px;
     position: relative;
-    width: 40px;
-    height: 40px;
+    overflow: hidden;
 }
 
-.progress-ring {
-    transform: rotate(-90deg);
-}
-
-.progress-ring-circle {
-    stroke-dasharray: 100.53;
-    stroke-dashoffset: 13.57;
-    transition: stroke-dashoffset 0.5s ease;
-}
-
-.progress-text {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    font-size: 10px;
-    font-weight: 600;
-    color: #3b82f6;
-}
-
-.progress-label {
-    font-size: 12px;
-    color: #9ca3af;
-    font-weight: 500;
-}
-
-.micro-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(59, 130, 246, 0.95);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    opacity: 0;
-    transition: opacity 0.3s ease;
-}
-
-.micro-card:hover .micro-overlay {
-    opacity: 1;
-}
-
-.overlay-btn {
-    background: white;
-    color: #3b82f6;
-    border: none;
-    padding: 14px 28px;
+/* Изображение иконки */
+.img_ic {
+    width: 80px;
+    height: 80px;
+    object-fit: contain;
     border-radius: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    transform: translateY(20px);
     transition: transform 0.3s ease;
 }
 
-.micro-card:hover .overlay-btn {
-    transform: translateY(0);
-}
-```
-
-## 11. Data-Driven Navigation Cards[10]
-
-**Описание:** Карточки с интегрированной визуализацией данных, мини-графиками и ключевыми метриками.
-
-**HTML пример:**
-```html
-<div class="data-nav-grid">
-    <div class="data-card">
-        <div class="data-header">
-            <div class="data-title-group">
-                <h3 class="data-title">Продажи</h3>
-                <div class="data-period">За месяц</div>
-            </div>
-            <div class="data-trend up">
-                <span class="trend-icon">↗</span>
-                <span class="trend-value">+12.5%</span>
-            </div>
-        </div>
-        <div class="data-visualization">
-            <div class="mini-chart">
-                <div class="chart-bar" style="height: 30%"></div>
-                <div class="chart-bar" style="height: 45%"></div>
-                <div class="chart-bar" style="height: 60%"></div>
-                <div class="chart-bar" style="height: 80%"></div>
-                <div class="chart-bar" style="height: 65%"></div>
-                <div class="chart-bar" style="height: 90%"></div>
-                <div class="chart-bar" style="height: 100%"></div>
-            </div>
-        </div>
-        <div class="data-description">Система управления продажами и CRM интеграции</div>
-        <div class="data-kpis">
-            <div class="kpi">
-                <div class="kpi-value">₽2.4M</div>
-                <div class="kpi-label">Выручка</div>
-            </div>
-            <div class="kpi">
-                <div class="kpi-value">847</div>
-                <div class="kpi-label">Сделки</div>
-            </div>
-        </div>
-    </div>
-</div>
-```
-
-**CSS:**
-```css
-.data-nav-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-    gap: 24px;
-    padding: 32px;
+.glass-card:hover .img_ic {
+    transform: scale(1.1);
 }
 
-.data-card {
-    background: #ffffff;
-    border: 1px solid #e5e7eb;
-    border-radius: 16px;
-    padding: 24px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-    transition: all 0.3s ease;
-    cursor: pointer;
-}
-
-.data-card:hover {
-    transform: translateY(-6px);
-    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.12);
-    border-color: #3b82f6;
-}
-
-.data-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 16px;
-}
-
-.data-title {
+/* Заголовок */
+.glass-title {
     font-size: 20px;
     font-weight: 600;
-    color: #1f2937;
-    margin: 0 0 4px 0;
-}
-
-.data-period {
-    font-size: 12px;
-    color: #9ca3af;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.data-trend {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 6px 12px;
-    border-radius: 20px;
-    font-size: 12px;
-    font-weight: 600;
-}
-
-.data-trend.up {
-    background: #dcfce7;
-    color: #166534;
-}
-
-.trend-icon {
-    font-size: 14px;
-}
-
-.data-visualization {
-    margin-bottom: 20px;
-    height: 80px;
-    display: flex;
-    align-items: center;
-}
-
-.mini-chart {
-    display: flex;
-    align-items: end;
-    gap: 4px;
-    height: 60px;
-    width: 100%;
-}
-
-.chart-bar {
-    background: linear-gradient(180deg, #3b82f6 0%, #1d4ed8 100%);
-    border-radius: 2px;
-    width: 12px;
-    transition: all 0.3s ease;
-    opacity: 0.8;
-}
-
-.chart-bar:hover {
-    opacity: 1;
-    transform: scaleY(1.1);
-}
-
-.data-description {
-    font-size: 14px;
-    color: #6b7280;
-    line-height: 1.5;
-    margin-bottom: 20px;
-}
-
-.data-kpis {
-    display: flex;
-    justify-content: space-between;
-    padding-top: 20px;
-    border-top: 1px solid #f3f4f6;
-}
-
-.kpi {
-    text-align: center;
-}
-
-.kpi-value {
-    font-size: 18px;
-    font-weight: 700;
-    color: #1f2937;
-    margin-bottom: 4px;
-}
-
-.kpi-label {
-    font-size: 12px;
-    color: #9ca3af;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-```
-
-## 12. Adaptive Context Navigation[8]
-
-**Описание:** Умные карточки, которые адаптируются к контексту пользователя, времени суток и рабочим процессам.
-
-**HTML пример:**
-```html
-<div class="adaptive-nav-system">
-    <div class="adaptive-card priority-high" data-context="work-hours">
-        <div class="adaptive-header">
-            <div class="context-indicator">
-                <div class="context-dot active"></div>
-                <span class="context-label">Рабочее время</span>
-            </div>
-            <div class="adaptive-time">14:30</div>
-        </div>
-        <div class="adaptive-content">
-            <div class="adaptive-icon">
-                <i class="fas fa-briefcase"></i>
-                <div class="icon-badge">!</div>
-            </div>
-            <h3 class="adaptive-title">Рабочие задачи</h3>
-            <p class="adaptive-description">Приоритетные задачи требуют вашего внимания</p>
-            <div class="adaptive-suggestions">
-                <div class="suggestion">
-                    <div class="suggestion-icon">📋</div>
-                    <div class="suggestion-text">5 задач на сегодня</div>
-                </div>
-                <div class="suggestion">
-                    <div class="suggestion-icon">📅</div>
-                    <div class="suggestion-text">2 встречи через час</div>
-                </div>
-            </div>
-        </div>
-        <div class="adaptive-actions">
-            <button class="adaptive-btn primary">Открыть планировщик</button>
-            <button class="adaptive-btn secondary">Уведомления</button>
-        </div>
-    </div>
-</div>
-```
-
-**CSS:**
-```css
-.adaptive-nav-system {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-    gap: 24px;
-    padding: 32px;
-}
-
-.adaptive-card {
-    background: #ffffff;
-    border: 2px solid transparent;
-    border-radius: 18px;
-    overflow: hidden;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
-    transition: all 0.4s ease;
-    cursor: pointer;
-    position: relative;
-}
-
-.adaptive-card.priority-high {
-    border-color: #f59e0b;
-    background: linear-gradient(135deg, rgba(245, 158, 11, 0.05) 0%, rgba(255, 255, 255, 1) 100%);
-}
-
-.adaptive-card:hover {
-    transform: translateY(-8px);
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.15);
-}
-
-.adaptive-header {
-    padding: 20px 24px 16px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: rgba(0, 0, 0, 0.02);
-}
-
-.context-indicator {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.context-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: #10b981;
-    animation: pulse 2s infinite;
-}
-
-.context-label {
-    font-size: 12px;
-    font-weight: 500;
-    color: #6b7280;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.adaptive-time {
-    font-size: 14px;
-    font-weight: 600;
-    color: #374151;
-    font-family: 'Courier New', monospace;
-}
-
-.adaptive-content {
-    padding: 20px 24px;
-}
-
-.adaptive-icon {
-    position: relative;
-    width: 56px;
-    height: 56px;
-    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-    border-radius: 14px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-size: 24px;
-    margin-bottom: 16px;
-}
-
-.icon-badge {
-    position: absolute;
-    top: -6px;
-    right: -6px;
-    width: 20px;
-    height: 20px;
-    background: #ef4444;
-    color: white;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 12px;
-    font-weight: 600;
-    border: 2px solid white;
-}
-
-.adaptive-title {
-    font-size: 20px;
-    font-weight: 600;
-    color: #1f2937;
+    color: rgba(255, 255, 255, 0.95);
     margin: 0 0 12px 0;
+    line-height: 1.3;
+    word-wrap: break-word;
+    hyphens: auto;
 }
 
-.adaptive-description {
+/* Описание */
+.glass-description {
     font-size: 14px;
-    color: #6b7280;
-    line-height: 1.5;
-    margin: 0 0 20px 0;
+    color: rgba(255, 255, 255, 0.8);
+    line-height: 1.6;
+    margin: 0;
+    word-wrap: break-word;
+    hyphens: auto;
+    overflow-wrap: break-word;
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.adaptive-suggestions {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin-bottom: 24px;
-}
-
-.suggestion {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 8px 12px;
-    background: #f9fafb;
-    border-radius: 8px;
-    font-size: 13px;
-    color: #374151;
-}
-
-.suggestion-icon {
-    font-size: 16px;
-}
-
-.adaptive-actions {
-    padding: 0 24px 24px;
-    display: flex;
-    gap: 12px;
-}
-
-.adaptive-btn {
-    flex: 1;
-    padding: 12px 16px;
-    border-radius: 10px;
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    border: none;
-}
-
-.adaptive-btn.primary {
-    background: #3b82f6;
-    color: white;
-}
-
-.adaptive-btn.primary:hover {
-    background: #2563eb;
-    transform: translateY(-1px);
-}
-
-.adaptive-btn.secondary {
-    background: #f3f4f6;
-    color: #374151;
-    border: 1px solid #d1d5db;
-}
-
-.adaptive-btn.secondary:hover {
-    background: #e5e7eb;
-}
-
-/* Адаптивные состояния */
+/* Адаптивные стили для планшетов */
 @media (max-width: 768px) {
-    .adaptive-nav-system {
-        grid-template-columns: 1fr;
-        padding: 20px;
+    .glass-nav-container {
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 20px;
+        padding: 16px;
     }
     
-    .adaptive-actions {
-        flex-direction: column;
+    .for_text {
+        padding: 20px;
+        padding-right: 10px;
+    }
+    
+    .gr_icon {
+        width: 100px;
+        padding: 20px 20px 20px 10px;
+    }
+    
+    .img_ic {
+        width: 70px;
+        height: 70px;
+    }
+    
+    .glass-title {
+        font-size: 18px;
+    }
+    
+    .glass-description {
+        font-size: 13px;
+        -webkit-line-clamp: 3;
     }
 }
-```
 
-## Рекомендации по внедрению в Oracle APEX
+/* Адаптивные стили для мобильных устройств */
+@media (max-width: 480px) {
+    .glass-nav-container {
+        grid-template-columns: 1fr;
+        gap: 16px;
+        padding: 12px;
+    }
+    
+    .glass-content {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .for_text {
+        padding: 20px;
+        padding-bottom: 12px;
+        text-align: center;
+    }
+    
+    .gr_icon {
+        width: auto;
+        padding: 12px 20px 20px 20px;
+        justify-content: center;
+    }
+    
+    .img_ic {
+        width: 60px;
+        height: 60px;
+    }
+    
+    .glass-title {
+        font-size: 16px;
+        margin-bottom: 8px;
+    }
+    
+    .glass-description {
+        font-size: 12px;
+        -webkit-line-clamp: 3;
+    }
+}
 
-### Для HTML-регионов:
-1. **Создайте HTML-регион** в Page Designer
-2. **Вставьте HTML-код** без DOCTYPE и основных тегов
-3. **Добавьте CSS** в Static Application Files или в свойства страницы
-4. **Настройте корпоративные цвета** через CSS переменные
+/* Стили для очень маленьких экранов */
+@media (max-width: 320px) {
+    .glass-nav-container {
+        padding: 8px;
+        gap: 12px;
+    }
+    
+    .for_text {
+        padding: 16px;
+        padding-bottom: 8px;
+    }
+    
+    .gr_icon {
+        padding: 8px 16px 16px 16px;
+    }
+    
+    .img_ic {
+        width: 50px;
+        height: 50px;
+    }
+}
 
-### Адаптация под корпоративный стиль:
-- Замените цветовые схемы на корпоративные
-- Добавьте логотип компании в карточки
-- Настройте типографику согласно брендбуку
-- Интегрируйте с существующими системами через SQL
+/* Улучшения для больших экранов */
+@media (min-width: 1200px) {
+    .glass-nav-container {
+        grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+        gap: 30px;
+        padding: 40px;
+    }
+    
+    .glass-card {
+        min-height: 220px;
+    }
+    
+    .for_text {
+        padding: 30px;
+        padding-right: 15px;
+    }
+    
+    .gr_icon {
+        width: 140px;
+        padding: 30px 30px 30px 15px;
+    }
+    
+    .img_ic {
+        width: 90px;
+        height: 90px;
+    }
+    
+    .glass-title {
+        font-size: 22px;
+        margin-bottom: 16px;
+    }
+    
+    .glass-description {
+        font-size: 15px;
+        -webkit-line-clamp: 5;
+    }
+}
 
-### Производительность:
-- Минифицируйте CSS для продакшена
-- Используйте CSS-переменные для гибкости
-- Тестируйте на разных устройствах
-- Оптимизируйте анимации для мобильных устройств
+/* Стили для печати */
+@media print {
+    .glass-nav-container {
+        background: white;
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .glass-card {
+        background: white;
+        border: 2px solid #ccc;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+    
+    .glass-title,
+    .glass-description {
+        color: black;
+    }
+}
 
-Эти 12 стилей представляют лучшие современные практики корпоративного UI/UX дизайна[1][2][9][3][8][4] и готовы к внедрению в ваше Oracle APEX приложение. Каждый стиль протестирован на совместимость с современными браузерами и адаптирован под корпоративные требования.
-
-Цитаты:
-[1] Card UI Design: The Best Practices and 25 Best Examples - Mockplus https://www.mockplus.com/blog/post/card-ui-design
-[2] Website Navigation: Exploring Basics, Best Practices and Examples https://crocoblock.com/blog/website-navigation-basics/
-[3] 13 Must-See Mega Menu Examples & Design Inspiration for 2025 https://www.creativecorner.studio/blog/mega-menu-examples
-[4] 10 Best Enterprise Dashboard UI Examples - Expert App Devs https://www.expertappdevs.com/blog/enterprise-business-dashboard-examples
-[5] Corporate Dashboard Examples - InetSoft https://www.inetsoft.com/info/corporate_dashboard_examples/
-[6] card navigation - Dribbble https://dribbble.com/search/card-navigation
-[7] 10 Best Dashboard Design Ideas for 2024 - Octet Design Studio https://octet.design/journal/dashboard-design-ideas/
-[8] 16 Timeless Web Navigation UI Patterns - UXPin https://www.uxpin.com/studio/blog/navigation-ui/
-[9] Navigation design: Almost everything you need to know - Justinmind https://www.justinmind.com/blog/navigation-design-almost-everything-you-need-to-know/
-[10] Dashboard Design UX Patterns Best Practices - Pencil & Paper https://www.pencilandpaper.io/articles/ux-pattern-analysis-data-dashboards
-[11] Instantly Create a Navigation Business Card - Design.com https://www.design.com/business-cards/tag/navigation
-[12] How to determine your website main navigation with a card sort https://webcommunity.sites.uiowa.edu/card-sorting
-[13] Dashboard Business Card Maker - BrandCrowd https://www.brandcrowd.com/business-cards/tag/dashboard
-[14] Navigation Business Card Maker - BrandCrowd https://www.brandcrowd.com/business-cards/tag/navigation
-[15] 140 Navigation Bar Template ideas - Pinterest https://www.pinterest.com/alena994/navigation-bar-template/
-[16] Home Dashboard Overview and Custom Dashboard Management https://knowledgebase.businessmap.io/hc/en-us/articles/360017800879-Home-Dashboard-Overview-and-Custom-Dashboard-Management
-[17] 50 Creative Corporate Business Card Design examples - Pinterest https://www.pinterest.com/pin/172614598190771419/
-[18] 10 Examples of Great Website Navigation | UXtweak https://blog.uxtweak.com/website-navigation-examples/
-[19] Dashboard Cards Must Be Highly Consistent and Appropriately Styled https://baymard.com/blog/cards-dashboard-layout
-[20] Gps Business Card Template Vector Images (over 500) - VectorStock https://www.vectorstock.com/royalty-free-vectors/gps-business-card-template-vectors
-[21] 30+ amazing website navigation examples - Justinmind https://www.justinmind.com/blog/website-navigation-examples/
-[22] Top-Performing Dashboard Examples | Whatagraph https://whatagraph.com/dashboard-examples
-[23] Business Card - Snazzy Maps - Free Styles for Google Maps https://snazzymaps.com/style/28921/business-card
-[24] Card UI Design Examples and Best Practices for Product Owners https://www.eleken.co/blog-posts/card-ui-examples-and-best-practices-for-product-owners
-[25] 50+ Free Dashboard Design Templates & Components - Figma https://www.figma.com/templates/dashboard-designs/
-[26] navigation - Pinterest https://ch.pinterest.com/kozadesign/navigation/
-[27] 10 examples of great website navigation and why they're awesome https://www.optimalworkshop.com/blog/10-examples-of-great-website-navigation-and-why-theyre-awesome-part-2
-[28] 8 Business cards ideas | dashboard design, ui design inspiration, ui ... https://www.pinterest.com/nigsai123/business-cards/
-[29] Map Card designs, themes, templates and downloadable ... - Dribbble https://dribbble.com/tags/map-card
-[30] Website Navigation: How to Design Menus Visitors Love [Examples] https://blog.hubspot.com/website/main-website-navigation-ht
-[31] Дизайн навигации - Москва - ДизайнДепо - Welcome to DESIGN https://designdepot.ru/space/navigation/
-[32] Дизайн главной страницы сайта: как оформить, и какая ... http://web-valley.ru/articles/glavnaya-stranica-sajta
-[33] Дизайн навигации в здании https://blast-bit.ru/poligrafiya/dizayn-navigatsii-v-zdanii/
-[34] Как сделать навигацию на сайте удобной - Tilda Education https://tilda.education/articles-navigation
-[35] Dashboard Card UI Building Block | Progress Telerik https://www.telerik.com/design-system/docs/ui-templates/building-blocks/dashboard/dashboard-card/
-[36] Проектирование и монтаж внешней навигации https://rokos.pro/visual-nav/
-[37] 16 лучших шаблонов навигации для веб-интерфейса - AskUsers. https://askusers.ru/blog/osnovy-ux/16-nestareyushchikh-shablonov-polzovatelskogo-interfeysa-veb-navigatsii/
-[38] Dashboard Design: best practices and examples - Justinmind https://www.justinmind.com/ui-design/dashboard-design-best-practices-ux
-[39] Дизайн табличек: 5 кейсов общественной навигации - Skillbox https://skillbox.ru/media/design/5-nav-cases/
-[40] Рабочая структура навигации: как спланировать меню сайта https://megagroup.ru/blog/post/navigaciya-na-sajte-kak-napravit-polzovatelya-k-nuzhnomu-dejstviyu
-[41] Status Cards - dashboard design, ui design, web design - Pinterest https://www.pinterest.com/tgoh1/status-cards/
-[42] Навигационные Таблички https://ru.pinterest.com/ideas/%D0%BD%D0%B0%D0%B2%D0%B8%D0%B3%D0%B0%D1%86%D0%B8%D0%BE%D0%BD%D0%BD%D1%8B%D0%B5-%D1%82%D0%B0%D0%B1%D0%BB%D0%B8%D1%87%D0%BA%D0%B8/956700524943/
-[43] Оформление главной страницы сайта: 13 удачных примеров + ... https://envybox.io/blog/oformlenie-glavnoj-stranicy-sajta/
-[44] Cards | Corporate UI Dashboard Bootstrap @ Creative Tim https://www.creative-tim.com/learning-lab/bootstrap/cards/corporate-ui-dashboard
-[45] Идеи на тему «Навигация» (300) | указатели, дизайн ... https://ru.pinterest.com/lisolovyevaee/%D0%BD%D0%B0%D0%B2%D0%B8%D0%B3%D0%B0%D1%86%D0%B8%D1%8F/
-[46] Навигация в дизайне сайта: основные элементы и примеры ... https://idbi.ru/blogs/blog/navigatsiya-v-dizayne-sayta
-[47] Card Dashboard Projects - Behance https://www.behance.net/search/projects/card%20dashboard
-[48] Карты и навигация шаблоны - Vectorportal.com https://vectorportal.com/ru/vector/%D0%9A%D0%B0%D1%80%D1%82%D1%8B-%D0%B8-%D0%BD%D0%B0%D0%B2%D0%B8%D0%B3%D0%B0%D1%86%D0%B8%D1%8F-%D1%88%D0%B0%D0%B1%D0%BB%D0%BE%D0%BD%D1%8B/22912
-[49] Навигация на странице сайта и элементы ... - 1С-Гэндальф https://gendalf.ru/news/marketing/gde-zdes-knopka-kak-sdelat-navigatsiyu-s/
-[50] eCommerce Navigation UX: Best Practices in 2024 | Onilab Blog https://onilab.com/blog/ecommerce-navigation-ux
-[51] Top 10 Cool Website Navigation Bar Examples to Increase User ... https://musemind.agency/blog/website-navigation-bar-examples
-[52] 60+ Menu and Navigation design examples | Muzli Design Inspiration https://muz.li/inspiration/menu-design/
-[53] Navbar Gallery – Navigation Design Inspiration https://www.navbar.gallery
-[54] Menu-Design Checklist: 17 UX Guidelines - NN/g https://www.nngroup.com/articles/menu-design/
-[55] 7 Website Navigation Best Practices With Examples - Flux Academy https://www.flux-academy.com/blog/7-website-navigation-best-practices-with-examples
-[56] 87 Business Dashboard Design ideas in 2025 - Pinterest https://www.pinterest.com/aladi001/business-dashboard-design/
-[57] 10 Best Webflow Navigation Bar Cloneables in 2024 - Navbar Gallery https://www.navbar.gallery/blog/best-webflow-navigation-bar-cloneables
-[58] Improving Dribbble app navigation step by step | by Olia Gozha https://blog.prototypr.io/improving-dribbble-app-navigation-step-by-step-c3f252c2c820
-[59] Web Tiles Projects :: Photos, videos, logos, illustrations and branding https://www.behance.net/search/projects/web%20tiles
-[60] 8 Website Navigation Examples That Drive Conversions [2025] https://www.newperspectivestudio.co.za/8-Website-Navigation-Examples-That-Drive-Conversions/
-[61] Card-based navigation - Design - Pinterest https://www.pinterest.com/pin/cardbased-navigation--371476669276810888/
-[62] Tile Company Projects :: Photos, videos, logos, illustrations and ... https://www.behance.net/search/projects/tile%20company
-[63] Website Navigation: A Guide to User-Friendly Menus (2024) - Shopify https://www.shopify.com/blog/website-navigation
-[64] Navigation Projects :: Photos, videos, logos, illustrations and branding https://www.behance.net/search/projects/navigation
-[65] Hot Navigation Menu Trend for 2024 Web Design - YouTube https://www.youtube.com/watch?v=-UGdYCWssxA
-[66] Browse thousands of Navigation Card images for design inspiration https://dribbble.com/search/navigation%20card
-[67] Menu Navigation Projects :: Photos, videos, logos, illustrations and ... https://www.behance.net/search/projects/menu%20navigation
-[68] 8 Modern Website Navigation Best Practices & Examples in 2024 https://techstackdigital.com/blog/modern-website-navigation-best-practices/
-[69] card based navigation - Dribbble https://dribbble.com/search/card-based-navigation
-[70] Corporate Layout Projects - Behance https://www.behance.net/search/projects/corporate%20layout
-[71] Website Navigation Best Practices in 2024 - Optimize Smart https://www.optimizesmart.com/website-navigation-best-practices/
-[72] Top Navigation designs, themes, templates and ... - Dribbble https://dribbble.com/tags/top-navigation
-[73] Tile Design Projects :: Photos, videos, logos, illustrations and branding https://www.behance.net/search/projects/tile%20design
-[74] Best Navigation Websites | Web Design Inspiration - Awwwards https://www.awwwards.com/websites/navigation/
-[75] Navigation - Dribbble https://dribbble.com/tags/navigation
-[76] Tiles Ui Projects :: Photos, videos, logos, illustrations and branding https://www.behance.net/search/projects/tiles%20ui
-[77] 25 Article Card Design Examples For Inspiration - Subframe https://www.subframe.com/tips/article-card-design-examples
-[78] Best Enterprise Dashboard Design Concepts - ScaleupAlly https://scaleupally.io/blog/enterprise-dashboard-design-concepts/
-[79] Website Navigation Examples Following Best Practices https://www.sliderrevolution.com/design/website-navigation-examples/
-[80] Tiles design principles | Wear - Android Developers https://developer.android.com/design/ui/wear/guides/m2-5/surfaces/tiles-principles
-[81] Great Website Navigation Examples for Better UX - Muffin Group https://muffingroup.com/blog/website-navigation-examples/
-[82] Tile - Carbon Design System https://carbondesignsystem.com/components/tile/usage/
-[83] Display apps, data, and web maps—ArcGIS Enterprise Sites https://enterprise.arcgis.com/en/sites/11.5/sites/display-apps-data-and-maps.htm
-[84] 3 design patterns for navigation that are better than hamburger menus https://uxdesign.cc/3-design-patterns-for-navigation-that-are-better-than-hamburger-menus-a8df64ee1d6e
-[85] Design patterns: Navigation https://ui-patterns.com/patterns/navigation/list
-[86] Homepage & Navigation UX Best Practices 2024 - Baymard https://baymard.com/blog/ecommerce-navigation-best-practice
-[87] 16 Best Dashboard Design Examples: Ways to Visualize Complex ... https://www.eleken.co/blog-posts/dashboard-design-examples-that-catch-the-eye
-[88] 30 Brilliant Examples Of UI Cards - Pinterest https://www.pinterest.com/pin/pinterest--468444798724660344/
-[89] Cards/Tile UI - dashboard design, web design, app design - Pinterest https://www.pinterest.com/77bishap/cardstile-ui/
-[90] Navigation Tiles - Powerful Web Design for Utilities https://www.powerfulweb.com/web-app/navigation-tiles/
-[91] How to set up tile navigation | Create & View Content | Documentation https://www.dundas.com/support/learning/documentation/create-view-content/how-to-set-up-tile-navigation
-[92] Real-World Examples of Business Intelligence (BI) Dashboards https://www.tableau.com/dashboard/business-intelligence-dashboard-examples
-[93] Simple Usability with Navigation Tiles in Clarity https://clarity.itdesign.de/en/software/best-practice/navigation-tiles/
-[94] 150 Tiles Homepage Designs - Nicepage.com https://nicepage.com/c/tiles-homepage-design
-[95] Best Dashboard Examples: Over 100 by Industry & Role - Qlik https://www.qlik.com/us/dashboard-examples
-[96] 12 Tile-based dashboard designs ideas - Pinterest https://www.pinterest.com/sarabbrown12/tile-based-dashboard-designs/
-[97] Dashboard Navigation designs, themes, templates and ... - Dribbble https://dribbble.com/tags/dashboard-navigation
-[98] Website Tiles Projects - Behance https://www.behance.net/search/projects/website%20tiles
-[99] 30 UI- Cards/ lists ideas - Pinterest https://www.pinterest.com/ericauxdesign/ui-cards-lists/
-[100] 13 Executive Dashboard Examples for Various Industries https://www.clearpointstrategy.com/blog/executive-dashboard-examples
+/* Дополнительная поддержка старых браузеров */
+@supports not (backdrop-filter: blur(20px)) {
+    .glass-card {
+        background: rgba(255, 255, 255, 0.25);
+    }
+}
+</style>

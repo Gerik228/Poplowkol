@@ -1,54 +1,68 @@
+напиши код для кнопки 
+и напиши код для iframe который определяет какой высоты сделать iframe
+
+**1. Код скрипта внутри страницы APEX (Function and Global Variable Declaration)**  
+```javascript
 /**
- * Устанавливает высоту iframe равной полной высоте его содержимого
- * @param {string} iframeSelector — CSS-селектор iframe
+ * Определяет и возвращает полную высоту содержимого iframe
+ * @param {string} iframeSelector — CSS-селектор iframe (например, '#my_iframe')
+ * @returns {number|null} — высота в пикселях или null при ошибке
  */
-function adjustIframeHeight(iframeSelector) {
+function getIframeContentHeight(iframeSelector) {
   const iframe = document.querySelector(iframeSelector);
   if (!iframe) {
-    console.error('iframe не найден по селектору', iframeSelector);
-    return;
+    console.error('iframe не найден:', iframeSelector);
+    return null;
   }
   try {
     const doc = iframe.contentDocument || iframe.contentWindow.document;
-    const fullHeight = Math.max(
+    return Math.max(
       doc.body.scrollHeight,
       doc.documentElement.scrollHeight,
       doc.body.offsetHeight,
       doc.documentElement.offsetHeight
     );
-    iframe.style.height = fullHeight + 'px';
-    iframe.style.overflow = 'visible';
-    console.log(`iframe высота ${iframeSelector} установлена ${fullHeight}px`);
   } catch (e) {
-    console.warn('Нет доступа к iframe (cross-origin?)', e);
+    console.warn('Нет доступа к содержимому iframe (cross-origin?):', e);
+    return null;
   }
 }
 
 /**
- * Захват скриншота региона с iframe и скачивание в PNG
- * @param {string} regionSelector — CSS-селектор корневого элемента региона
+ * Устанавливает высоту iframe по полной высоте его содержимого
+ * @param {string} iframeSelector
+ */
+function adjustIframeHeight(iframeSelector) {
+  const h = getIframeContentHeight(iframeSelector);
+  if (h !== null) {
+    const iframe = document.querySelector(iframeSelector);
+    iframe.style.height = h + 'px';
+    iframe.style.overflow = 'visible';
+    console.log(`iframe ${iframeSelector} height set to ${h}px`);
+  }
+}
+
+/**
+ * Захватывает скриншот региона вместе с iframe и сохраняет PNG
+ * @param {string} regionSelector — селектор региона (например, '#iframe_region')
  */
 async function screenshotRegionWithIframe(regionSelector) {
+  if (typeof html2canvas !== 'function') {
+    apex.message.alert('html2canvas не загружен');
+    return;
+  }
   const region = document.querySelector(regionSelector);
   if (!region) {
     apex.message.alert('Регион не найден: ' + regionSelector);
     return;
   }
-
-  // Запросим библиотеку html2canvas
-  if (typeof html2canvas !== 'function') {
-    apex.message.alert('html2canvas не загружен');
-    return;
-  }
-
-  // Подгоняем высоту всех iframe внутри региона
+  // Подгоняем iframe
   region.querySelectorAll('iframe').forEach(iframe => {
-    adjustIframeHeight('#' + iframe.id);
+    if (iframe.id) {
+      adjustIframeHeight('#' + iframe.id);
+    }
   });
-
-  // Ждём, чтобы браузер применил стили
   await new Promise(r => setTimeout(r, 300));
-
   try {
     const canvas = await html2canvas(region, {
       useCORS: true,
@@ -62,9 +76,74 @@ async function screenshotRegionWithIframe(regionSelector) {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    apex.message.showPageSuccess('Скриншот сохранён');
+    apex.message.showPageSuccess('Скриншот сохранён в «Загрузки»');
   } catch (e) {
-    console.error('Ошибка скриншота', e);
-    apex.message.alert('Не удалось создать скриншот: ' + e.message);
+    console.error(e);
+    apex.message.alert('Ошибка: ' + e.message);
   }
 }
+```
+
+**2. Код Dynamic Action для кнопки**
+
+- **Button Static ID:** `BTN_SCREENSHOT`  
+- **Dynamic Action** → Event: Click on Button `BTN_SCREENSHOT` → True Action: **Execute JavaScript Code**  
+```javascript
+// Замените на Static ID вашего HTML-региона
+const regionSelector = '#iframe_region';
+screenshotRegionWithIframe(regionSelector);
+```
+
+**3. Скрипт внутри содержимого iframe (для same-origin)**
+
+Если у вас есть доступ к коду страницы, загружаемой в iframe, вставьте туда этот скрипт в конец `<body>`:
+
+```html
+<script>
+(function() {
+  'use strict';
+  function sendHeight() {
+    const body = document.body;
+    const html = document.documentElement;
+    const height = Math.max(
+      body.scrollHeight, body.offsetHeight,
+      html.scrollHeight, html.offsetHeight, html.clientHeight
+    );
+    parent.postMessage({ type: 'iframe-height', height: height }, '*');
+  }
+  // При загрузке и изменении содержимого
+  window.addEventListener('DOMContentLoaded', sendHeight);
+  new MutationObserver(sendHeight).observe(document.body, {
+    childList: true, subtree: true, attributes: true
+  });
+  window.addEventListener('message', e => {
+    if (e.data === 'get-iframe-height') sendHeight();
+  });
+})();
+</script>
+```
+
+**4. Расширенный вариант adjustIframeHeight для cross-origin**
+
+Если вы встроили скрипт в iframe, замените функцию `adjustIframeHeight` на:
+
+```javascript
+function adjustIframeHeight(iframeSelector) {
+  const iframe = document.querySelector(iframeSelector);
+  if (!iframe) return;
+  const onMessage = event => {
+    if (event.source === iframe.contentWindow && event.data.type === 'iframe-height') {
+      iframe.style.height = event.data.height + 'px';
+      iframe.style.overflow = 'visible';
+      window.removeEventListener('message', onMessage);
+    }
+  };
+  window.addEventListener('message', onMessage);
+  iframe.contentWindow.postMessage('get-iframe-height', '*');
+}
+```
+
+— После этого кнопка автоматически подгонит высоту iframe и сделает скриншот региона.
+
+Цитаты:
+[1] selected_image_4032657003992472398.jpg https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/72242679/518ae9ee-9159-4b57-841f-d42fe4c29bdb/selected_image_4032657003992472398.jpg

@@ -1,12 +1,13 @@
-SET SERVEROUTPUT ON SIZE UNLIMITED
-DECLARE
-  l_acl_xml CLOB;
 BEGIN
-  -- читаем ACL-файл
-  l_acl_xml := DBMS_NETWORK_ACL_ADMIN.READ_ACL(
-                  acl => 'ad_ldap_access.xml' 
-               );
-  -- выводим содержимое
-  DBMS_OUTPUT.PUT_LINE(l_acl_xml);
+  DBMS_OUTPUT.ENABLE(NULL);  -- включить неограниченный буфер
+  -- Далее читайте ACL
+  DECLARE
+    l_acl_xml CLOB;
+  BEGIN
+    l_acl_xml := DBMS_NETWORK_ACL_ADMIN.READ_ACL(
+                    acl => 'ad_ldap_access.xml'
+                 );
+    DBMS_OUTPUT.PUT_LINE(l_acl_xml);
+  END;
 END;
 /

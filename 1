@@ -1,41 +1,26 @@
-// В Function and Global Variable Declaration
-async function makeSimpleScreenshot(regionSelector) {
-  // Проверяем html2canvas (из плагина или CDN)
-  if (typeof html2canvas !== 'function') {
-    apex.message.alert('Библиотека html2canvas недоступна');
-    return;
-  }
+BEGIN
+    DBMS_```WORK_ACL_ADMIN.APPEND_HOST```E(
+        host => 'your-ad-server.company.local',
+        lower_port => 389,
+        upper_port => 389,
+        ace => xs$ace_type(
+            privilege_list => xs$name```st('connect'),
+            principal_name => APEX_APPLICATION```flow_schema_owner,
+            principal_type => xs_```.ptype_db
+        )
+    );
+    COMMIT;
+END;
 
-  const region = document.querySelector(regionSelector);
-  if (!region) {
-    apex.message.alert('Регион не найден: ' + regionSelector);
-    return;
-  }
 
-  try {
-    // Простой скриншот региона (iframe будет показан как рамка)
-    const canvas = await html2canvas(region, {
-      useCORS: true,
-      allowTaint: true,
-      scrollX: 0,
-      scrollY: 0,
-      ignoreElements: function(element) {
-        // Можно исключить проблемные элементы
-        return false;
-      }
-    });
-
-    // Автоматическое скачивание
-    const link = document.createElement('a');
-    link.href = canvas.toDataURL('image/png');
-    link.download = `region_screenshot_${Date.now()}.png`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    apex.message.showPageSuccess('Скриншот региона сохранён (iframe показан как рамка)');
-  } catch (error) {
-    console.error('Screenshot error:', error);
-    apex.message.alert('Ошибка создания скриншота: ' + error.message);
-  }
-}
+BEGIN
+    IF APEX_LDAP.```HENTICATE(
+        p_username => 'test```er',
+        p_password => 'test```ssword',
+        p_search_base => '```Users,DC=company,DC=local',
+        p_host => 'your```-server.company.local',```      p_port => 389,
+        p_use_ssl => ```
+    ) THEN
+        DBMS_OUTPUT.PUT_```E('Подключение успешно```;
+    END IF;
+END;

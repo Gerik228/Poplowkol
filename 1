@@ -1,50 +1,70 @@
-// Проверяем наличие html2canvas
-if (typeof html2canvas !== 'function') {
-  apex.message.alert('html2canvas не загружен!');
-  throw new Error('html2canvas not found');
-}
-
-// Селектор региона с iframe (замените на ваш)
-const selector = '#YOUR_REGION_STATIC_ID';
-
-// Делает iframe «высоким» для полного захвата
-function expandIframes(root) {
-  root.querySelectorAll('iframe').forEach(iframe => {
-    try {
-      const doc = iframe.contentDocument || iframe.contentWindow.document;
-      const h = Math.max(doc.body.scrollHeight, doc.documentElement.scrollHeight);
-      iframe.style.height = h + 'px';
-      iframe.style.overflow = 'visible';
-    } catch(e) {
-      console.warn('Cross-origin iframe, пропускаем');
-    }
-  });
-}
-
-// Сам скрипт захвата и скачивания
-(async () => {
-  apex.util.showSpinner($('#BTN_SCREENSHOT'));
-  expandIframes(document.querySelector(selector));
-  // Небольшая задержка, чтобы iframe успел перерисоваться
-  await new Promise(r => setTimeout(r, 300));
+/**
+ * Устанавливает высоту iframe равной полной высоте его содержимого
+ * @param {string} iframeSelector — CSS-селектор iframe
+ */
+function adjustIframeHeight(iframeSelector) {
+  const iframe = document.querySelector(iframeSelector);
+  if (!iframe) {
+    console.error('iframe не найден по селектору', iframeSelector);
+    return;
+  }
   try {
-    const canvas = await html2canvas(document.querySelector(selector), {
+    const doc = iframe.contentDocument || iframe.contentWindow.document;
+    const fullHeight = Math.max(
+      doc.body.scrollHeight,
+      doc.documentElement.scrollHeight,
+      doc.body.offsetHeight,
+      doc.documentElement.offsetHeight
+    );
+    iframe.style.height = fullHeight + 'px';
+    iframe.style.overflow = 'visible';
+    console.log(`iframe высота ${iframeSelector} установлена ${fullHeight}px`);
+  } catch (e) {
+    console.warn('Нет доступа к iframe (cross-origin?)', e);
+  }
+}
+
+/**
+ * Захват скриншота региона с iframe и скачивание в PNG
+ * @param {string} regionSelector — CSS-селектор корневого элемента региона
+ */
+async function screenshotRegionWithIframe(regionSelector) {
+  const region = document.querySelector(regionSelector);
+  if (!region) {
+    apex.message.alert('Регион не найден: ' + regionSelector);
+    return;
+  }
+
+  // Запросим библиотеку html2canvas
+  if (typeof html2canvas !== 'function') {
+    apex.message.alert('html2canvas не загружен');
+    return;
+  }
+
+  // Подгоняем высоту всех iframe внутри региона
+  region.querySelectorAll('iframe').forEach(iframe => {
+    adjustIframeHeight('#' + iframe.id);
+  });
+
+  // Ждём, чтобы браузер применил стили
+  await new Promise(r => setTimeout(r, 300));
+
+  try {
+    const canvas = await html2canvas(region, {
       useCORS: true,
       allowTaint: true,
       scrollX: 0,
       scrollY: 0
     });
-    // Создаём ссылку для скачивания
     const link = document.createElement('a');
     link.href = canvas.toDataURL('image/png');
-    link.download = 'screenshot_' + Date.now() + '.png';
+    link.download = `screenshot_${Date.now()}.png`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    apex.message.showPageSuccess('Скриншот сохранён в «Загрузки»');
-  } catch(e) {
-    apex.message.alert('Ошибка создания скриншота: ' + e.message);
-  } finally {
-    apex.util.hideSpinner($('#BTN_SCREENSHOT'));
+    apex.message.showPageSuccess('Скриншот сохранён');
+  } catch (e) {
+    console.error('Ошибка скриншота', e);
+    apex.message.alert('Не удалось создать скриншот: ' + e.message);
   }
-})();
+}

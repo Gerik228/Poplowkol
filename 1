@@ -11,3 +11,54 @@ BEGIN
   END;
 END;
 /
+
+
+
+DECLARE
+  l_session  DBMS_LDAP.SESSION;
+  l_retval   PLS_INTEGER;
+  l_results  DBMS_LDAP.MESSAGE;
+  l_entry    DBMS_LDAP.MESSAGE;
+  l_dn       VARCHAR2(2000);
+  TYPE str_arr IS TABLE OF VARCHAR2(4000) INDEX BY PLS_INTEGER;
+  attrs      str_arr;
+BEGIN
+  -- Инициализация LDAP-сессии
+  l_session := DBMS_LDAP.init('', );
+  -- Bind под сервисным аккаунтом
+  l_retval := DBMS_LDAP.simple_bind_s(
+                l_session,
+                'CN=,OU=,OU=,DC=,DC=',
+                '<пароль>');
+  INSERT INTO ldap_test_log(step_name, message)
+    VALUES('BIND', 'Bind return code: ' || l_retval);
+
+  -- Поиск с общим BASE_DN и фильтром person
+  attrs(1) := 'cn';
+  l_results := DBMS_LDAP.search_s(
+                 l_session,
+                 'OU=,DC=,DC=',
+                 DBMS_LDAP.SCOPE_SUBTREE,
+                 '(objectClass=person)',
+                 attrs,
+                 FALSE);
+  IF l_results IS NOT NULL THEN
+    INSERT INTO ldap_test_log(step_name, message)
+      VALUES('SEARCH ALL USERS', 'Search returned results');
+  ELSE
+    INSERT INTO ldap_test_log(step_name, message)
+      VALUES('SEARCH ALL USERS', 'No results found');
+  END IF;
+
+  -- Завершение сессии
+  DBMS_LDAP.unbind_s(l_session);
+  INSERT INTO ldap_test_log(step_name, message)
+    VALUES('UNBIND', 'Session closed');
+  COMMIT;
+EXCEPTION
+  WHEN OTHERS THEN
+    INSERT INTO ldap_test_log(step_name, message)
+      VALUES('ERROR', SQLERRM);
+    COMMIT;
+END;
+/

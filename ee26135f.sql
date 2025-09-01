@@ -186,3 +186,38 @@ INSERT INTO AD_SYNC_SERVICE.AD_SYNC_CONFIG (config_group, config_name, config_va
 ('SCHEDULE', 'TIMEZONE', 'Europe/Moscow', 'Timezone for scheduling');
 
 COMMIT;
+
+
+
+DECLARE
+  l_session DBMS_LDAP.SESSION;
+  l_results DBMS_LDAP.LDAP_MESSAGE;
+  l_attrs   DBMS_LDAP.STRING_ARRAY;
+  l_entry   DBMS_LDAP.MESSAGE;
+  l_dn      VARCHAR2(2000);
+BEGIN
+  l_session := DBMS_LDAP.init('.', .);
+  DBMS_LDAP.simple_bind_s(
+    l_session,
+    'CN=.,OU=ServiceUser,OU=.,DC=.,DC=.',
+    '<password>'
+  );
+   (objectClass=person)
+  l_attrs(1) := 'cn';
+  l_results := DBMS_LDAP.search_s(
+    l_session,
+    'OU=.,DC=.,DC=.',
+    DBMS_LDAP.SCOPE_SUBTREE,
+    '(objectClass=person)',
+    l_attrs,
+    FALSE
+  );
+  l_entry := DBMS_LDAP.first_entry(l_session, l_results);
+  WHILE l_entry IS NOT NULL LOOP
+    l_dn := DBMS_LDAP.get_dn(l_session, l_entry);
+    DBMS_OUTPUT.PUT_LINE('Found DN: ' || l_dn);
+    l_entry := DBMS_LDAP.next_entry(l_session, l_entry);
+  END LOOP;
+  DBMS_LDAP.unbind_s(l_session);
+END;
+/

@@ -189,35 +189,63 @@ COMMIT;
 
 
 
+
+
+
 DECLARE
-  l_session DBMS_LDAP.SESSION;
-  l_results DBMS_LDAP.LDAP_MESSAGE;
-  l_attrs   DBMS_LDAP.STRING_ARRAY;
-  l_entry   DBMS_LDAP.MESSAGE;
-  l_dn      VARCHAR2(2000);
+  l_session  DBMS_LDAP.SESSION;
+  l_retval   PLS_INTEGER;
+  l_results  DBMS_LDAP.MESSAGE;
+  l_entry    DBMS_LDAP.MESSAGE;
+  l_dn       VARCHAR2(2000);
+  attrs      DBMS_LDAP.STRING_ARRAY;
 BEGIN
-  l_session := DBMS_LDAP.init('.', .);
-  DBMS_LDAP.simple_bind_s(
-    l_session,
-    'CN=.,OU=ServiceUser,OU=.,DC=.,DC=.',
-    '<password>'
-  );
-   (objectClass=person)
-  l_attrs(1) := 'cn';
+  -- 1. Инициализация LDAP-сессии
+  l_session := DBMS_LDAP.init('', .);
+  
+  -- 2. Bind под сервисным аккаунтом
+  l_retval := DBMS_LDAP.simple_bind_s(
+                l_session,
+                'CN=x,OU=,OU=,DC=,DC=',
+                '<ь>');
+  INSERT INTO ldap_test_log(step_name, message)
+    VALUES('BIND', 'Bind return code: ' || l_retval);
+  
+  -- 3. Поиск с общим BASE_DN и фильтром person
+  attrs(1) := 'cn';
   l_results := DBMS_LDAP.search_s(
-    l_session,
-    'OU=.,DC=.,DC=.',
-    DBMS_LDAP.SCOPE_SUBTREE,
-    '(objectClass=person)',
-    l_attrs,
-    FALSE
-  );
-  l_entry := DBMS_LDAP.first_entry(l_session, l_results);
-  WHILE l_entry IS NOT NULL LOOP
-    l_dn := DBMS_LDAP.get_dn(l_session, l_entry);
-    DBMS_OUTPUT.PUT_LINE('Found DN: ' || l_dn);
-    l_entry := DBMS_LDAP.next_entry(l_session, l_entry);
-  END LOOP;
+                 l_session,
+                 'OU=,DC=,DC=',         -- общий контейнер
+                 DBMS_LDAP.SCOPE_SUBTREE,         -- рекурсивно
+                 '(objectClass=person)',          -- фильтр пользователей
+                 attrs,
+                 FALSE);
+  INSERT INTO ldap_test_log(step_name, message)
+    VALUES('SEARCH ALL USERS', 'Entries found: ' ||
+           CASE WHEN l_results IS NULL THEN '0' ELSE '>=1' END);
+
+  -- 4. Поиск в конкретном OU (пример)
+  l_results := DBMS_LDAP.search_s(
+                 l_session,
+                 'OU=ServiceUser,OU=PSKB,DC=pskb,DC=ad',  
+                 DBMS_LDAP.SCOPE_SUBTREE,
+                 '(objectClass=person)',
+                 attrs,
+                 FALSE);
+  INSERT INTO ldap_test_log(step_name, message)
+    VALUES('SEARCH SERVICEUSER OU', 'Entries found: ' ||
+           CASE WHEN l_results IS NULL THEN '0' ELSE '>=1' END);
+
+  -- 5. Завершение сессии
   DBMS_LDAP.unbind_s(l_session);
+  INSERT INTO ldap_test_log(step_name, message)
+    VALUES('UNBIND', 'Session closed');
+  
+  COMMIT;
+EXCEPTION
+  WHEN OTHERS THEN
+    INSERT INTO ldap_test_log(step_name, message)
+      VALUES('ERROR', SQLERRM);
+    COMMIT;
 END;
 /

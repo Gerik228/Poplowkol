@@ -1,101 +1,99 @@
 DECLARE
   l_session  DBMS_LDAP.SESSION;
   l_retval   PLS_INTEGER;
-  l_results  DBMS_LDAP.MESSAGE;
+  l_message  DBMS_LDAP.MESSAGE;
   l_entry    DBMS_LDAP.MESSAGE;
-  l_dn       VARCHAR2(2000);
   l_count    PLS_INTEGER := 0;
+  l_dn       VARCHAR2(2000);
 BEGIN
-  -- 1. Создаём таблицу для логов (если не существует)
-  BEGIN
-    EXECUTE IMMEDIATE 'CREATE TABLE ldap_test_log (
-      id NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-      step_name VARCHAR2(100),
-      message VARCHAR2(4000),
-      log_time TIMESTAMP DEFAULT SYSTIMESTAMP
-    )';
-  EXCEPTION
-    WHEN OTHERS THEN NULL; -- игнорируем если таблица уже есть
-  END;
-
-  -- 2. Инициализация и подключение
-  l_session := DBMS_LDAP.init('YOUR_LDAP_SERVER_ADDRESS', 389);
+  -- Проверяем текущего пользователя
+  DBMS_OUTPUT.ENABLE(1000000);
+  DBMS_OUTPUT.PUT_LINE('Current user: ' || USER);
   
+  -- Инициализация LDAP сессии
+  l_session := DBMS_LDAP.init('YOUR_AD_SERVER_NAME', 389);
+  DBMS_OUTPUT.PUT_LINE('LDAP init: OK');
+  
+  -- Подключение под сервисным аккаунтом
   l_retval := DBMS_LDAP.simple_bind_s(
     l_session,
-    'CN=YOUR_SERVICE_ACCOUNT,OU=YOUR_OU,OU=YOUR_PARENT_OU,DC=your_domain,DC=com',
-    'YOUR_SERVICE_ACCOUNT_PASSWORD'
+    'CN=YOUR_SERVICE_ACCOUNT,OU=YOUR_SERVICE_OU,OU=YOUR_PARENT_OU,DC=your_domain,DC=local',
+    'YOUR_PASSWORD_HERE'
   );
+  DBMS_OUTPUT.PUT_LINE('Bind result: ' || l_retval);
   
-  INSERT INTO ldap_test_log(step_name, message)
-    VALUES('BIND', 'Bind return code: ' || l_retval);
-  
-  -- 3. Поиск БЕЗ атрибутов (упрощённый вариант)
-  l_results := DBMS_LDAP.search_s(
-    l_session,
-    'OU=YOUR_BASE_OU,DC=your_domain,DC=com',     -- BASE_DN для поиска пользователей
-    DBMS_LDAP.SCOPE_SUBTREE,                     -- область поиска
-    '(objectClass=person)',                      -- фильтр
-    NULL,                                        -- атрибуты (NULL = все)
-    FALSE                                        -- attrsonly
-  );
-  
-  -- 4. Подсчитываем найденные записи
-  l_entry := DBMS_LDAP.first_entry(l_session, l_results);
-  WHILE l_entry IS NOT NULL LOOP
-    l_count := l_count + 1;
-    l_dn := DBMS_LDAP.get_dn(l_session, l_entry);
+  IF l_retval = 0 THEN
+    -- Успешное подключение, пробуем поиск
+    -- Используем упрощенную сигнатуру search_s (только обязательные параметры)
+    BEGIN
+      l_message := DBMS_LDAP.search_s(
+        ld       => l_session,
+        base     => 'OU=YOUR_USERS_OU,DC=your_domain,DC=local',
+        scope    => DBMS_LDAP.SCOPE_SUBTREE,
+        filter   => '(objectClass=person)',
+        attrs    => NULL,
+        attrsonly => 0
+      );
+      DBMS_OUTPUT.PUT_LINE('Search executed successfully');
+      
+      -- Подсчитываем результаты
+      l_entry := DBMS_LDAP.first_entry(l_session, l_message);
+      WHILE l_entry IS NOT NULL LOOP
+        l_count := l_count + 1;
+        IF l_count <= 3 THEN -- показываем только первые 3
+          l_dn := DBMS_LDAP.get_dn(l_session, l_entry);
+          DBMS_OUTPUT.PUT_LINE('User ' || l_count || ': ' || SUBSTR(l_dn, 1, 100));
+        END IF;
+        l_entry := DBMS_LDAP.next_entry(l_session, l_entry);
+      END LOOP;
+      
+      DBMS_OUTPUT.PUT_LINE('Total users found: ' || l_count);
+      
+    EXCEPTION
+      WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Search error: ' || SQLCODE || ' - ' || SQLERRM);
+    END;
     
-    -- Логируем первые 5 записей для примера
-    IF l_count <= 5 THEN
-      INSERT INTO ldap_test_log(step_name, message)
-        VALUES('USER_' || l_count, SUBSTR(l_dn, 1, 500));
-    END IF;
+    -- Поиск групп
+    BEGIN
+      l_count := 0;
+      l_message := DBMS_LDAP.search_s(
+        ld       => l_session,
+        base     => 'OU=YOUR_GROUPS_OU,DC=your_domain,DC=local',
+        scope    => DBMS_LDAP.SCOPE_SUBTREE,
+        filter   => '(objectClass=group)',
+        attrs    => NULL,
+        attrsonly => 0
+      );
+      
+      l_entry := DBMS_LDAP.first_entry(l_session, l_message);
+      WHILE l_entry IS NOT NULL LOOP
+        l_count := l_count + 1;
+        l_entry := DBMS_LDAP.next_entry(l_session, l_entry);
+      END LOOP;
+      
+      DBMS_OUTPUT.PUT_LINE('Total groups found: ' || l_count);
+      
+    EXCEPTION
+      WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Groups search error: ' || SQLCODE || ' - ' || SQLERRM);
+    END;
     
-    l_entry := DBMS_LDAP.next_entry(l_session, l_entry);
-  END LOOP;
+  ELSE
+    DBMS_OUTPUT.PUT_LINE('Bind failed with code: ' || l_retval);
+  END IF;
   
-  INSERT INTO ldap_test_log(step_name, message)
-    VALUES('SEARCH_RESULT', 'Total users found: ' || l_count);
-    
-  -- 5. Поиск групп
-  l_count := 0;
-  l_results := DBMS_LDAP.search_s(
-    l_session,
-    'OU=YOUR_GROUPS_OU,DC=your_domain,DC=com',   -- BASE_DN для поиска групп
-    DBMS_LDAP.SCOPE_SUBTREE,
-    '(objectClass=group)',                       -- фильтр групп
-    NULL,
-    FALSE
-  );
-  
-  l_entry := DBMS_LDAP.first_entry(l_session, l_results);
-  WHILE l_entry IS NOT NULL LOOP
-    l_count := l_count + 1;
-    l_entry := DBMS_LDAP.next_entry(l_session, l_entry);
-  END LOOP;
-  
-  INSERT INTO ldap_test_log(step_name, message)
-    VALUES('GROUPS_RESULT', 'Total groups found: ' || l_count);
-
-  -- 6. Закрытие сессии
+  -- Закрываем сессию
   DBMS_LDAP.unbind_s(l_session);
-  INSERT INTO ldap_test_log(step_name, message)
-    VALUES('COMPLETE', 'Test completed successfully');
-  
-  COMMIT;
+  DBMS_OUTPUT.PUT_LINE('Session closed');
   
 EXCEPTION
   WHEN OTHERS THEN
-    INSERT INTO ldap_test_log(step_name, message)
-      VALUES('ERROR', SUBSTR(SQLERRM, 1, 4000));
-    COMMIT;
-    
+    DBMS_OUTPUT.PUT_LINE('Fatal error: ' || SQLCODE || ' - ' || SQLERRM);
     IF l_session IS NOT NULL THEN
       BEGIN
         DBMS_LDAP.unbind_s(l_session);
-      EXCEPTION
-        WHEN OTHERS THEN NULL;
+      EXCEPTION WHEN OTHERS THEN NULL;
       END;
     END IF;
 END;

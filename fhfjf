@@ -1,95 +1,60 @@
 DECLARE
   l_session  DBMS_LDAP.SESSION;
   l_retval   PLS_INTEGER;
-  l_message  DBMS_LDAP.MESSAGE;
-  l_entry    DBMS_LDAP.MESSAGE;
-  l_count    PLS_INTEGER := 0;
-  l_dn       VARCHAR2(2000);
 BEGIN
   -- Проверяем текущего пользователя
   DBMS_OUTPUT.ENABLE(1000000);
   DBMS_OUTPUT.PUT_LINE('Current user: ' || USER);
   
   -- Инициализация LDAP сессии
-  l_session := DBMS_LDAP.init('YOUR_AD_SERVER_NAME', 389);
-  DBMS_OUTPUT.PUT_LINE('LDAP init: OK');
+  BEGIN
+    l_session := DBMS_LDAP.init('YOUR_AD_SERVER_NAME', 389);
+    DBMS_OUTPUT.PUT_LINE('LDAP init: SUCCESS');
+  EXCEPTION
+    WHEN OTHERS THEN
+      DBMS_OUTPUT.PUT_LINE('LDAP init: FAILED - ' || SQLERRM);
+      RETURN;
+  END;
   
   -- Подключение под сервисным аккаунтом
-  l_retval := DBMS_LDAP.simple_bind_s(
-    l_session,
-    'CN=YOUR_SERVICE_ACCOUNT,OU=YOUR_SERVICE_OU,OU=YOUR_PARENT_OU,DC=your_domain,DC=local',
-    'YOUR_PASSWORD_HERE'
-  );
-  DBMS_OUTPUT.PUT_LINE('Bind result: ' || l_retval);
-  
-  IF l_retval = 0 THEN
-    -- Успешное подключение, пробуем поиск
-    -- Используем упрощенную сигнатуру search_s (только обязательные параметры)
-    BEGIN
-      l_message := DBMS_LDAP.search_s(
-        ld       => l_session,
-        base     => 'OU=YOUR_USERS_OU,DC=your_domain,DC=local',
-        scope    => DBMS_LDAP.SCOPE_SUBTREE,
-        filter   => '(objectClass=person)',
-        attrs    => NULL,
-        attrsonly => 0
-      );
-      DBMS_OUTPUT.PUT_LINE('Search executed successfully');
-      
-      -- Подсчитываем результаты
-      l_entry := DBMS_LDAP.first_entry(l_session, l_message);
-      WHILE l_entry IS NOT NULL LOOP
-        l_count := l_count + 1;
-        IF l_count <= 3 THEN -- показываем только первые 3
-          l_dn := DBMS_LDAP.get_dn(l_session, l_entry);
-          DBMS_OUTPUT.PUT_LINE('User ' || l_count || ': ' || SUBSTR(l_dn, 1, 100));
-        END IF;
-        l_entry := DBMS_LDAP.next_entry(l_session, l_entry);
-      END LOOP;
-      
-      DBMS_OUTPUT.PUT_LINE('Total users found: ' || l_count);
-      
-    EXCEPTION
-      WHEN OTHERS THEN
-        DBMS_OUTPUT.PUT_LINE('Search error: ' || SQLCODE || ' - ' || SQLERRM);
-    END;
+  BEGIN
+    l_retval := DBMS_LDAP.simple_bind_s(
+      l_session,
+      'CN=YOUR_SERVICE_ACCOUNT,OU=YOUR_SERVICE_OU,OU=YOUR_PARENT_OU,DC=your_domain,DC=local',
+      'YOUR_PASSWORD_HERE'
+    );
     
-    -- Поиск групп
-    BEGIN
-      l_count := 0;
-      l_message := DBMS_LDAP.search_s(
-        ld       => l_session,
-        base     => 'OU=YOUR_GROUPS_OU,DC=your_domain,DC=local',
-        scope    => DBMS_LDAP.SCOPE_SUBTREE,
-        filter   => '(objectClass=group)',
-        attrs    => NULL,
-        attrsonly => 0
-      );
-      
-      l_entry := DBMS_LDAP.first_entry(l_session, l_message);
-      WHILE l_entry IS NOT NULL LOOP
-        l_count := l_count + 1;
-        l_entry := DBMS_LDAP.next_entry(l_session, l_entry);
-      END LOOP;
-      
-      DBMS_OUTPUT.PUT_LINE('Total groups found: ' || l_count);
-      
-    EXCEPTION
-      WHEN OTHERS THEN
-        DBMS_OUTPUT.PUT_LINE('Groups search error: ' || SQLCODE || ' - ' || SQLERRM);
-    END;
+    IF l_retval = 0 THEN
+      DBMS_OUTPUT.PUT_LINE('BIND: SUCCESS - Connection to AD established!');
+      DBMS_OUTPUT.PUT_LINE('Your AD connection is working correctly.');
+      DBMS_OUTPUT.PUT_LINE('You can now configure your sync job with these parameters.');
+    ELSE
+      DBMS_OUTPUT.PUT_LINE('BIND: FAILED - Return code: ' || l_retval);
+      CASE l_retval
+        WHEN 49 THEN DBMS_OUTPUT.PUT_LINE('Error: Invalid credentials (username/password)');
+        WHEN 32 THEN DBMS_OUTPUT.PUT_LINE('Error: No such object (DN not found)');
+        WHEN 34 THEN DBMS_OUTPUT.PUT_LINE('Error: Invalid DN syntax');
+        ELSE DBMS_OUTPUT.PUT_LINE('Error: Unknown LDAP error code');
+      END CASE;
+    END IF;
     
-  ELSE
-    DBMS_OUTPUT.PUT_LINE('Bind failed with code: ' || l_retval);
-  END IF;
+  EXCEPTION
+    WHEN OTHERS THEN
+      DBMS_OUTPUT.PUT_LINE('BIND: EXCEPTION - ' || SQLERRM);
+  END;
   
   -- Закрываем сессию
-  DBMS_LDAP.unbind_s(l_session);
-  DBMS_OUTPUT.PUT_LINE('Session closed');
+  BEGIN
+    DBMS_LDAP.unbind_s(l_session);
+    DBMS_OUTPUT.PUT_LINE('Session closed successfully');
+  EXCEPTION
+    WHEN OTHERS THEN
+      DBMS_OUTPUT.PUT_LINE('Warning: Error closing session - ' || SQLERRM);
+  END;
   
 EXCEPTION
   WHEN OTHERS THEN
-    DBMS_OUTPUT.PUT_LINE('Fatal error: ' || SQLCODE || ' - ' || SQLERRM);
+    DBMS_OUTPUT.PUT_LINE('FATAL ERROR: ' || SQLERRM);
     IF l_session IS NOT NULL THEN
       BEGIN
         DBMS_LDAP.unbind_s(l_session);

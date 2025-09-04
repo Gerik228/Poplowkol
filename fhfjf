@@ -4,9 +4,7 @@ DECLARE
   l_message     DBMS_LDAP.MESSAGE;
   l_entry       DBMS_LDAP.MESSAGE;
   l_dn          VARCHAR2(2000);
-  l_cn          VARCHAR2(500);
-  l_email       VARCHAR2(500);
-  l_values      DBMS_LDAP.STRING_ARRAY;
+  l_username    VARCHAR2(500);
   l_count       PLS_INTEGER := 0;
   l_group_count PLS_INTEGER := 0;
   
@@ -15,7 +13,7 @@ BEGIN
   l_session := DBMS_LDAP.init('', 389);
   l_retval := DBMS_LDAP.simple_bind_s(
     l_session,
-    'CN=',
+    '',
     ''
   );
   
@@ -26,10 +24,10 @@ BEGIN
     DELETE FROM AD_SYNC_SERVICE.AD_USERS;
     COMMIT;
     
-    -- Ищем пользователей используя обычный search (НЕ search_s)
+    -- Ищем пользователей используя обычный search
     l_retval := DBMS_LDAP.search(
       l_session,
-      'OU=,DC=,DC=',
+      '',
       DBMS_LDAP.SCOPE_SUBTREE,
       '(objectClass=person)',
       NULL,
@@ -41,35 +39,27 @@ BEGIN
       l_entry := DBMS_LDAP.first_entry(l_session, l_message);
       
       WHILE l_entry IS NOT NULL LOOP
-        -- Получаем DN
+        -- Получаем только DN (без атрибутов чтобы избежать ошибок)
         l_dn := DBMS_LDAP.get_dn(l_session, l_entry);
         
-        -- Получаем CN (Common Name)
-        l_values := DBMS_LDAP.get_values(l_session, l_entry, 'cn');
-        IF l_values IS NOT NULL AND l_values.COUNT > 0 THEN
-          l_cn := l_values(l_values.FIRST);
+        -- Извлекаем username из DN (часть после CN=)
+        IF INSTR(l_dn, 'CN=') > 0 THEN
+          l_username := SUBSTR(l_dn, INSTR(l_dn, 'CN=') + 3);
+          l_username := SUBSTR(l_username, 1, INSTR(l_username || ',', ',') - 1);
         ELSE
-          l_cn := NULL;
+          l_username := 'Unknown';
         END IF;
         
-        -- Получаем Email
-        l_values := DBMS_LDAP.get_values(l_session, l_entry, 'mail');
-        IF l_values IS NOT NULL AND l_values.COUNT > 0 THEN
-          l_email := l_values(l_values.FIRST);
-        ELSE
-          l_email := NULL;
-        END IF;
-        
-        -- Вставляем в таблицу
+        -- Вставляем в таблицу (упрощенная версия)
         INSERT INTO AD_SYNC_SERVICE.AD_USERS (
           user_dn, 
           username, 
           email, 
           created_date
         ) VALUES (
-          l_dn,
-          l_cn,
-          l_email,
+          SUBSTR(l_dn, 1, 500),  -- обрезаем до размера колонки
+          SUBSTR(l_username, 1, 100),
+          NULL,  -- email пока NULL, так как get_values не работает
           SYSDATE
         );
         
@@ -79,17 +69,14 @@ BEGIN
     END IF;
     
     COMMIT;
-    DBMS_OUTPUT.PUT_LINE('Users synchronized: ' || l_count);
     
     -- ========== СИНХРОНИЗАЦИЯ ГРУПП ==========
-    -- Очищаем старые группы
     DELETE FROM AD_SYNC_SERVICE.AD_GROUPS;
     COMMIT;
     
-    -- Ищем группы
     l_retval := DBMS_LDAP.search(
       l_session,
-      'OU=,DC=,DC=',
+      '',
       DBMS_LDAP.SCOPE_SUBTREE,
       '(objectClass=group)',
       NULL,
@@ -101,25 +88,23 @@ BEGIN
       l_entry := DBMS_LDAP.first_entry(l_session, l_message);
       
       WHILE l_entry IS NOT NULL LOOP
-        -- Получаем DN группы
         l_dn := DBMS_LDAP.get_dn(l_session, l_entry);
         
-        -- Получаем CN группы
-        l_values := DBMS_LDAP.get_values(l_session, l_entry, 'cn');
-        IF l_values IS NOT NULL AND l_values.COUNT > 0 THEN
-          l_cn := l_values(l_values.FIRST);
+        -- Извлекаем имя группы из DN
+        IF INSTR(l_dn, 'CN=') > 0 THEN
+          l_username := SUBSTR(l_dn, INSTR(l_dn, 'CN=') + 3);
+          l_username := SUBSTR(l_username, 1, INSTR(l_username || ',', ',') - 1);
         ELSE
-          l_cn := NULL;
+          l_username := 'Unknown';
         END IF;
         
-        -- Вставляем группу
         INSERT INTO AD_SYNC_SERVICE.AD_GROUPS (
           group_dn,
           group_name,
           created_date
         ) VALUES (
-          l_dn,
-          l_cn,
+          SUBSTR(l_dn, 1, 500),
+          SUBSTR(l_username, 1, 100),
           SYSDATE
         );
         
@@ -129,19 +114,20 @@ BEGIN
     END IF;
     
     COMMIT;
-    DBMS_OUTPUT.PUT_LINE('Groups synchronized: ' || l_group_count);
-    DBMS_OUTPUT.PUT_LINE('Synchronization completed successfully!');
     
-  ELSE
-    DBMS_OUTPUT.PUT_LINE('LDAP Bind failed: ' || l_retval);
+    -- Выводим результат (если DBMS_OUTPUT работает)
+    BEGIN
+      DBMS_OUTPUT.PUT_LINE('Users: ' || l_count || ', Groups: ' || l_group_count);
+    EXCEPTION
+      WHEN OTHERS THEN NULL;
+    END;
+    
   END IF;
   
-  -- Закрываем сессию
   DBMS_LDAP.unbind_s(l_session);
   
 EXCEPTION
   WHEN OTHERS THEN
-    DBMS_OUTPUT.PUT_LINE('Error: ' || SQLERRM);
     ROLLBACK;
     IF l_session IS NOT NULL THEN
       BEGIN
@@ -149,5 +135,6 @@ EXCEPTION
       EXCEPTION WHEN OTHERS THEN NULL;
       END;
     END IF;
+    RAISE;
 END;
 /

@@ -1,147 +1,102 @@
-пишет ошибку 
-Ora 00933 3/61
-INSERT INTO AD_SYNC_SERVICE.AD_SYNC_CONFIG (config_group, config_name, config_value, config_description) VALUES
-('LDAP', 'HOST', 'your-ad-server.domain.com', 'LDAP Server Hostname'),
-('LDAP', 'PORT', '389', 'LDAP Server Port'),
-('LDAP', 'USE_SSL', 'N', 'Use SSL Connection (Y/N)'),
-('LDAP', 'SSL_PORT', '636', 'LDAP SSL Port'),
-('LDAP', 'BASE_DN', 'DC=domain,DC=com', 'Base Distinguished Name'),
-('LDAP', 'USER_BASE_DN', 'OU=Users,DC=domain,DC=com', 'User Search Base DN'),
-('LDAP', 'GROUP_BASE_DN', 'OU=Groups,DC=domain,DC=com', 'Group Search Base DN'),
-('LDAP', 'BIND_DN', 'CN=ldap_service,OU=Service Accounts,DC=domain,DC=com', 'Service Account DN'),
-('LDAP', 'BIND_PASSWORD', 'ServicePassword123', 'Service Account Password'),
-('SYNC', 'BATCH_SIZE', '1000', 'Records per batch'),
-('SYNC', 'MAX_RETRIES', '3', 'Maximum retry attempts'),
-('SYNC', 'TIMEOUT_SECONDS', '300', 'LDAP operation timeout'),
-('SYNC', 'ENABLE_USER_SYNC', 'Y', 'Enable user synchronization'),
-('SYNC', 'ENABLE_GROUP_SYNC', 'Y', 'Enable group synchronization'),
-('SYNC', 'ENABLE_MEMBERSHIP_SYNC', 'Y', 'Enable membership synchronization'),
-('SYNC', 'DELETE_MISSING_USERS', 'N', 'Delete users not found in AD'),
-('SYNC', 'EMAIL_NOTIFICATIONS', 'admin@company.com', 'Email for notifications'),
-('FILTERS', 'USER_FILTER', '(&(objectClass=user)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))', 'Active users filter'),
-('FILTERS', 'GROUP_FILTER', '(objectClass=group)', 'Groups filter'),
-('SCHEDULE', 'DAILY_TIME', '02:00:00', 'Daily sync time'),
-('SCHEDULE', 'TIMEZONE', 'Europe/Moscow', 'Timezone for scheduling');
+DECLARE
+  l_session  DBMS_LDAP.SESSION;
+  l_retval   PLS_INTEGER;
+  l_results  DBMS_LDAP.MESSAGE;
+  l_entry    DBMS_LDAP.MESSAGE;
+  l_dn       VARCHAR2(2000);
+  l_count    PLS_INTEGER := 0;
+BEGIN
+  -- 1. Создаём таблицу для логов (если не существует)
+  BEGIN
+    EXECUTE IMMEDIATE 'CREATE TABLE ldap_test_log (
+      id NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      step_name VARCHAR2(100),
+      message VARCHAR2(4000),
+      log_time TIMESTAMP DEFAULT SYSTIMESTAMP
+    )';
+  EXCEPTION
+    WHEN OTHERS THEN NULL; -- игнорируем если таблица уже есть
+  END;
 
-COMMIT;
+  -- 2. Инициализация и подключение
+  l_session := DBMS_LDAP.init('YOUR_LDAP_SERVER_ADDRESS', 389);
+  
+  l_retval := DBMS_LDAP.simple_bind_s(
+    l_session,
+    'CN=YOUR_SERVICE_ACCOUNT,OU=YOUR_OU,OU=YOUR_PARENT_OU,DC=your_domain,DC=com',
+    'YOUR_SERVICE_ACCOUNT_PASSWORD'
+  );
+  
+  INSERT INTO ldap_test_log(step_name, message)
+    VALUES('BIND', 'Bind return code: ' || l_retval);
+  
+  -- 3. Поиск БЕЗ атрибутов (упрощённый вариант)
+  l_results := DBMS_LDAP.search_s(
+    l_session,
+    'OU=YOUR_BASE_OU,DC=your_domain,DC=com',     -- BASE_DN для поиска пользователей
+    DBMS_LDAP.SCOPE_SUBTREE,                     -- область поиска
+    '(objectClass=person)',                      -- фильтр
+    NULL,                                        -- атрибуты (NULL = все)
+    FALSE                                        -- attrsonly
+  );
+  
+  -- 4. Подсчитываем найденные записи
+  l_entry := DBMS_LDAP.first_entry(l_session, l_results);
+  WHILE l_entry IS NOT NULL LOOP
+    l_count := l_count + 1;
+    l_dn := DBMS_LDAP.get_dn(l_session, l_entry);
+    
+    -- Логируем первые 5 записей для примера
+    IF l_count <= 5 THEN
+      INSERT INTO ldap_test_log(step_name, message)
+        VALUES('USER_' || l_count, SUBSTR(l_dn, 1, 500));
+    END IF;
+    
+    l_entry := DBMS_LDAP.next_entry(l_session, l_entry);
+  END LOOP;
+  
+  INSERT INTO ldap_test_log(step_name, message)
+    VALUES('SEARCH_RESULT', 'Total users found: ' || l_count);
+    
+  -- 5. Поиск групп
+  l_count := 0;
+  l_results := DBMS_LDAP.search_s(
+    l_session,
+    'OU=YOUR_GROUPS_OU,DC=your_domain,DC=com',   -- BASE_DN для поиска групп
+    DBMS_LDAP.SCOPE_SUBTREE,
+    '(objectClass=group)',                       -- фильтр групп
+    NULL,
+    FALSE
+  );
+  
+  l_entry := DBMS_LDAP.first_entry(l_session, l_results);
+  WHILE l_entry IS NOT NULL LOOP
+    l_count := l_count + 1;
+    l_entry := DBMS_LDAP.next_entry(l_session, l_entry);
+  END LOOP;
+  
+  INSERT INTO ldap_test_log(step_name, message)
+    VALUES('GROUPS_RESULT', 'Total groups found: ' || l_count);
 
-# Ошибка ORA-00933: SQL Command Not Properly Ended
-
-**Основная проблема**: ваш SQL запрос содержит синтаксическую ошибку, которая не позволяет Oracle правильно интерпретировать команду INSERT.
-
-## Причина ошибки
-
-Главная проблема в том, что в Oracle **нельзя использовать обычный синтаксис INSERT с множественными VALUES**, как в других СУБД (MySQL, PostgreSQL)[1][2][3][4]. Oracle требует специальный синтаксис для вставки нескольких строк.
-
-## Правильные способы решения
-
-### Вариант 1: Использование INSERT ALL (рекомендуется)
-
-Замените ваш код на следующий синтаксис:
-
-```sql
-INSERT ALL
-INTO AD_SYNC_SERVICE.AD_SYNC_CONFIG (config_group, config_name, config_value, config_description) VALUES ('LDAP', 'HOST', 'your-ad-server.domain.com', 'LDAP Server Hostname')
-INTO AD_SYNC_SERVICE.AD_SYNC_CONFIG (config_group, config_name, config_value, config_description) VALUES ('LDAP', 'PORT', '389', 'LDAP Server Port')
-INTO AD_SYNC_SERVICE.AD_SYNC_CONFIG (config_group, config_name, config_value, config_description) VALUES ('LDAP', 'USE_SSL', 'N', 'Use SSL Connection (Y/N)')
-INTO AD_SYNC_SERVICE.AD_SYNC_CONFIG (config_group, config_name, config_value, config_description) VALUES ('LDAP', 'SSL_PORT', '636', 'LDAP SSL Port')
-INTO AD_SYNC_SERVICE.AD_SYNC_CONFIG (config_group, config_name, config_value, config_description) VALUES ('LDAP', 'BASE_DN', 'DC=domain,DC=com', 'Base Distinguished Name')
-INTO AD_SYNC_SERVICE.AD_SYNC_CONFIG (config_group, config_name, config_value, config_description) VALUES ('LDAP', 'USER_BASE_DN', 'OU=Users,DC=domain,DC=com', 'User Search Base DN')
-INTO AD_SYNC_SERVICE.AD_SYNC_CONFIG (config_group, config_name, config_value, config_description) VALUES ('LDAP', 'GROUP_BASE_DN', 'OU=Groups,DC=domain,DC=com', 'Group Search Base DN')
-INTO AD_SYNC_SERVICE.AD_SYNC_CONFIG (config_group, config_name, config_value, config_description) VALUES ('LDAP', 'BIND_DN', 'CN=ldap_service,OU=Service Accounts,DC=domain,DC=com', 'Service Account DN')
-INTO AD_SYNC_SERVICE.AD_SYNC_CONFIG (config_group, config_name, config_value, config_description) VALUES ('LDAP', 'BIND_PASSWORD', 'ServicePassword123', 'Service Account Password')
-INTO AD_SYNC_SERVICE.AD_SYNC_CONFIG (config_group, config_name, config_value, config_description) VALUES ('SYNC', 'BATCH_SIZE', '1000', 'Records per batch')
-INTO AD_SYNC_SERVICE.AD_SYNC_CONFIG (config_group, config_name, config_value, config_description) VALUES ('SYNC', 'MAX_RETRIES', '3', 'Maximum retry attempts')
-INTO AD_SYNC_SERVICE.AD_SYNC_CONFIG (config_group, config_name, config_value, config_description) VALUES ('SYNC', 'TIMEOUT_SECONDS', '300', 'LDAP operation timeout')
-INTO AD_SYNC_SERVICE.AD_SYNC_CONFIG (config_group, config_name, config_value, config_description) VALUES ('SYNC', 'ENABLE_USER_SYNC', 'Y', 'Enable user synchronization')
-INTO AD_SYNC_SERVICE.AD_SYNC_CONFIG (config_group, config_name, config_value, config_description) VALUES ('SYNC', 'ENABLE_GROUP_SYNC', 'Y', 'Enable group synchronization')
-INTO AD_SYNC_SERVICE.AD_SYNC_CONFIG (config_group, config_name, config_value, config_description) VALUES ('SYNC', 'ENABLE_MEMBERSHIP_SYNC', 'Y', 'Enable membership synchronization')
-INTO AD_SYNC_SERVICE.AD_SYNC_CONFIG (config_group, config_name, config_value, config_description) VALUES ('SYNC', 'DELETE_MISSING_USERS', 'N', 'Delete users not found in AD')
-INTO AD_SYNC_SERVICE.AD_SYNC_CONFIG (config_group, config_name, config_value, config_description) VALUES ('SYNC', 'EMAIL_NOTIFICATIONS', 'admin@company.com', 'Email for notifications')
-INTO AD_SYNC_SERVICE.AD_SYNC_CONFIG (config_group, config_name, config_value, config_description) VALUES ('FILTERS', 'USER_FILTER', '(&(objectClass=user)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))', 'Active users filter')
-INTO AD_SYNC_SERVICE.AD_SYNC_CONFIG (config_group, config_name, config_value, config_description) VALUES ('FILTERS', 'GROUP_FILTER', '(objectClass=group)', 'Groups filter')
-INTO AD_SYNC_SERVICE.AD_SYNC_CONFIG (config_group, config_name, config_value, config_description) VALUES ('SCHEDULE', 'DAILY_TIME', '02:00:00', 'Daily sync time')
-INTO AD_SYNC_SERVICE.AD_SYNC_CONFIG (config_group, config_name, config_value, config_description) VALUES ('SCHEDULE', 'TIMEZONE', 'Europe/Moscow', 'Timezone for scheduling')
-SELECT 1 FROM dual;
-
-COMMIT;
-```
-
-**Важно**: обратите внимание на обязательную строку `SELECT 1 FROM dual;` в конце[5][6][7].
-
-### Вариант 2: Использование UNION ALL
-
-```sql
-INSERT INTO AD_SYNC_SERVICE.AD_SYNC_CONFIG (config_group, config_name, config_value, config_description)
-SELECT 'LDAP', 'HOST', 'your-ad-server.domain.com', 'LDAP Server Hostname' FROM dual UNION ALL
-SELECT 'LDAP', 'PORT', '389', 'LDAP Server Port' FROM dual UNION ALL
-SELECT 'LDAP', 'USE_SSL', 'N', 'Use SSL Connection (Y/N)' FROM dual UNION ALL
-SELECT 'LDAP', 'SSL_PORT', '636', 'LDAP SSL Port' FROM dual UNION ALL
-SELECT 'LDAP', 'BASE_DN', 'DC=domain,DC=com', 'Base Distinguished Name' FROM dual UNION ALL
-SELECT 'LDAP', 'USER_BASE_DN', 'OU=Users,DC=domain,DC=com', 'User Search Base DN' FROM dual UNION ALL
-SELECT 'LDAP', 'GROUP_BASE_DN', 'OU=Groups,DC=domain,DC=com', 'Group Search Base DN' FROM dual UNION ALL
-SELECT 'LDAP', 'BIND_DN', 'CN=ldap_service,OU=Service Accounts,DC=domain,DC=com', 'Service Account DN' FROM dual UNION ALL
-SELECT 'LDAP', 'BIND_PASSWORD', 'ServicePassword123', 'Service Account Password' FROM dual UNION ALL
-SELECT 'SYNC', 'BATCH_SIZE', '1000', 'Records per batch' FROM dual UNION ALL
-SELECT 'SYNC', 'MAX_RETRIES', '3', 'Maximum retry attempts' FROM dual UNION ALL
-SELECT 'SYNC', 'TIMEOUT_SECONDS', '300', 'LDAP operation timeout' FROM dual UNION ALL
-SELECT 'SYNC', 'ENABLE_USER_SYNC', 'Y', 'Enable user synchronization' FROM dual UNION ALL
-SELECT 'SYNC', 'ENABLE_GROUP_SYNC', 'Y', 'Enable group synchronization' FROM dual UNION ALL
-SELECT 'SYNC', 'ENABLE_MEMBERSHIP_SYNC', 'Y', 'Enable membership synchronization' FROM dual UNION ALL
-SELECT 'SYNC', 'DELETE_MISSING_USERS', 'N', 'Delete users not found in AD' FROM dual UNION ALL
-SELECT 'SYNC', 'EMAIL_NOTIFICATIONS', 'admin@company.com', 'Email for notifications' FROM dual UNION ALL
-SELECT 'FILTERS', 'USER_FILTER', '(&(objectClass=user)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))', 'Active users filter' FROM dual UNION ALL
-SELECT 'FILTERS', 'GROUP_FILTER', '(objectClass=group)', 'Groups filter' FROM dual UNION ALL
-SELECT 'SCHEDULE', 'DAILY_TIME', '02:00:00', 'Daily sync time' FROM dual UNION ALL
-SELECT 'SCHEDULE', 'TIMEZONE', 'Europe/Moscow', 'Timezone for scheduling' FROM dual;
-
-COMMIT;
-```
-
-### Вариант 3: Отдельные INSERT команды
-
-```sql
-INSERT INTO AD_SYNC_SERVICE.AD_SYNC_CONFIG (config_group, config_name, config_value, config_description) VALUES ('LDAP', 'HOST', 'your-ad-server.domain.com', 'LDAP Server Hostname');
-INSERT INTO AD_SYNC_SERVICE.AD_SYNC_CONFIG (config_group, config_name, config_value, config_description) VALUES ('LDAP', 'PORT', '389', 'LDAP Server Port');
-INSERT INTO AD_SYNC_SERVICE.AD_SYNC_CONFIG (config_group, config_name, config_value, config_description) VALUES ('LDAP', 'USE_SSL', 'N', 'Use SSL Connection (Y/N)');
--- ... и так далее для каждой строки
-
-COMMIT;
-```
-
-## Дополнительные причины ошибки ORA-00933
-
-Помимо неправильного синтаксиса множественной вставки, эта ошибка может возникать по следующим причинам[1][8][9]:
-
-1. **Лишняя точка с запятой** при выполнении через JDBC или другие клиенты[1]
-2. **Неподдерживаемые конструкции** в Oracle (например, JOIN в UPDATE)[8]
-3. **Неправильное использование ORDER BY** в подзапросах[1]
-4. **Проблемы с переменными**, содержащими специальные символы[10]
-
-**Рекомендация**: используйте первый вариант с `INSERT ALL`, так как он наиболее эффективен для множественной вставки данных в Oracle[5][6][11].
-
-Цитаты:
-[1] How to Fix Oracle ORA-00933 Error: SQL Command Not Properly ... https://www.dbvis.com/thetable/how-to-fix-oracle-ora-00933-error-sql-command-not-properly-ended/
-[2] Syntax error when trying to insert multiple rows in SQL? https://stackoverflow.com/questions/55228539/syntax-error-when-trying-to-insert-multiple-rows-in-sql
-[3] INSERT Multiple Rows - MySQL to Oracle Migration - SQLines Tools https://www.sqlines.com/mysql-to-oracle/insert
-[4] How do I insert multiple rows in a single SQL query? - Sentry https://sentry.io/answers/how-do-i-insert-multiple-rows-in-a-single-sql-query/
-[5] 4 Ways to Insert Multiple Rows in Oracle - Database.Guide https://database.guide/4-ways-to-insert-multiple-rows-in-oracle/
-[6] A Guide to INSERT, UPDATE, and DELETE Statements in Oracle https://www.red-gate.com/simple-talk/databases/oracle-databases/a-guide-to-insert-update-and-delete-statements-in-oracle/
-[7] Oracle INSERT ALL Statement https://www.oracletutorial.com/oracle-basics/oracle-insert-all/
-[8] SQL Error: ORA-00933: SQL command not properly ended https://stackoverflow.com/questions/8940471/sql-error-ora-00933-sql-command-not-properly-ended
-[9] ORA-00933: SQL command not properly ended, - Microsoft Q&A https://learn.microsoft.com/en-us/answers/questions/1662088/ora-00933-sql-command-not-properly-ended
-[10] ORA-00933: SQL command not properly ended - UiPath Forum https://forum.uipath.com/t/ora-00933-sql-command-not-properly-ended/269281
-[11] How to Insert Data in Oracle SQL - Tricentis https://www.tricentis.com/learn/how-to-insert-data-in-oracle-sql
-[12] Script error - Inserting multiple rows in one SQL statement. https://community.sap.com/t5/technology-q-a/script-error-inserting-multiple-rows-in-one-sql-statement/qaq-p/11012438
-[13] INSERT statement - SQL Language Reference https://docs.oracle.com/en/database/oracle/oracle-database/18/sqlrf/INSERT.html
-[14] ORA-00933: SQL command not properly ended EVEN tho I am ... https://stackoverflow.com/questions/77647375/ora-00933-sql-command-not-properly-ended-even-tho-i-am-actually-using-the-stand
-[15] Inserting multiple rows doesn't work. Syntax issue? : r/PostgreSQL https://www.reddit.com/r/PostgreSQL/comments/nlv2hb/inserting_multiple_rows_doesnt_work_syntax_issue/
-[16] ORACLE prepare error: ORA-00933: SQL command not properly ... https://communities.sas.com/t5/SAS-Programming/ERROR-ORACLE-prepare-error-ORA-00933-SQL-command-not-properly/td-p/916650
-[17] Keep getting "SQL command not properly ended" - Oracle Forums https://forums.oracle.com/ords/apexds/post/keep-getting-sql-command-not-properly-ended-3029
-[18] sql command not properly ended" error while starting Bitbucket server https://support.atlassian.com/bitbucket-data-center/kb/ora-00933-sql-command-not-properly-ended-error-while-starting-bitbucket-server/
-[19] Example Using the INSERT Statement - PL/SQL Developer's Guide https://docs.oracle.com/en/database/other-databases/timesten/22.1/plsql-developer/example-using-insert-statement.html
-[20] How to Insert Multiple Rows at Once in PL/SQL? - GeeksforGeeks https://www.geeksforgeeks.org/plsql/how-to-insert-multiple-rows-at-once-in-plsql/
-[21] inserting in batches - Oracle Forums https://forums.oracle.com/ords/apexds/post/inserting-in-batches-3281
-[22] INSERT ALL ОПЕРАТОР — Oracle PL/SQL https://oracleplsql.ru/insert-all.html
-[23] 8. Batch Statement and Bulk Copy Operations https://python-oracledb.readthedocs.io/en/latest/user_guide/batch_statement.html
-[24] sql - Best way to do multi-row insert in Oracle? - Stack Overflow https://stackoverflow.com/questions/39576/best-way-to-do-multi-row-insert-in-oracle
+  -- 6. Закрытие сессии
+  DBMS_LDAP.unbind_s(l_session);
+  INSERT INTO ldap_test_log(step_name, message)
+    VALUES('COMPLETE', 'Test completed successfully');
+  
+  COMMIT;
+  
+EXCEPTION
+  WHEN OTHERS THEN
+    INSERT INTO ldap_test_log(step_name, message)
+      VALUES('ERROR', SUBSTR(SQLERRM, 1, 4000));
+    COMMIT;
+    
+    IF l_session IS NOT NULL THEN
+      BEGIN
+        DBMS_LDAP.unbind_s(l_session);
+      EXCEPTION
+        WHEN OTHERS THEN NULL;
+      END;
+    END IF;
+END;
+/

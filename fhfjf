@@ -1,3 +1,70 @@
+DROP TABLE ad_users CASCADE CONSTRAINTS;
+
+-- Создаем таблицу заново с правильной структурой
+CREATE TABLE ad_users (
+  -- ОСНОВНЫЕ ПОЛЯ
+  user_id             VARCHAR2(100) PRIMARY KEY,
+  sam_account_name    VARCHAR2(256) UNIQUE NOT NULL,
+  distinguished_name  VARCHAR2(1000),
+  
+
+  display_name        VARCHAR2(500),  -- name (ФИО)
+  description_field   VARCHAR2(1000), -- description (отдел)  
+  email_address       VARCHAR2(256),  -- mail (почта)
+  phone_number        VARCHAR2(50),   -- ipPhone (номер телефона)
+  city_location       VARCHAR2(100),  -- l (город)
+  employee_id         VARCHAR2(50),   -- employeeID (id пользователя)
+  department_name     VARCHAR2(500),  -- department (его департамент)
+  department_code     VARCHAR2(50),   -- PSKBKodDivision (код департамента)
+  street_address      VARCHAR2(500),  -- streetAddress (улица)
+  job_title           VARCHAR2(256),  -- title (должность)
+  company_name        VARCHAR2(256),  -- company (где находится)
+  manager_dn          VARCHAR2(1000), -- manager (DN менеджера)
+  manager_name        VARCHAR2(500), 
+  -- ДОПОЛНИТЕЛЬНЫЕ ПОЛЕЗНЫЕ ПОЛЯ
+  user_principal_name VARCHAR2(256),  -- userPrincipalName
+  telephone_number    VARCHAR2(50),   -- telephoneNumber
+  mobile_number       VARCHAR2(50),   -- mobile
+  office_location     VARCHAR2(256),  -- physicalDeliveryOfficeName
+  when_created        DATE,           -- whenCreated
+  account_control     NUMBER,         -- userAccountControl
+  
+ 
+  department_id       VARCHAR2(100),
+  
+  -- СЛУЖЕБНЫЕ ПОЛЯ
+  sync_status         VARCHAR2(10) DEFAULT 'ACTIVE',
+  created_date        DATE DEFAULT SYSDATE,
+  created_by          VARCHAR2(100) DEFAULT USER,
+  modified_date       DATE,
+  modified_by         VARCHAR2(100),
+  last_sync_date      DATE,
+  
+  -- ОГРАНИЧЕНИЯ
+  CONSTRAINT chk_sync_status CHECK (sync_status IN ('ACTIVE', 'INACTIVE')),
+  CONSTRAINT fk_user_dept FOREIGN KEY (department_id) REFERENCES ad_departments(department_id)
+);
+
+-- Создаем индексы для производительности
+CREATE INDEX idx_users_sam_account ON ad_users(sam_account_name);
+CREATE INDEX idx_users_email ON ad_users(email_address);
+CREATE INDEX idx_users_employee_id ON ad_users(employee_id);
+CREATE INDEX idx_users_dept_code ON ad_users(department_code);
+CREATE INDEX idx_users_sync_status ON ad_users(sync_status);
+CREATE INDEX idx_users_last_sync ON ad_users(last_sync_date);
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 CREATE TABLE ad_departments (
   department_id       VARCHAR2(100) PRIMARY KEY,

@@ -1,844 +1,625 @@
 
--- ============================================================================
 
--- СОЗДАНИЕ СПЕЦИФИКАЦИИ ПАКЕТА
-CREATE OR REPLACE PACKAGE AD_SYNC_SERVICE.PKG_AD_SYNC AS
-
-  -- Константы статусов синхронизации
-  C_SUCCESS  CONSTANT VARCHAR2(10) := 'SUCCESS';
-  C_WARNING  CONSTANT VARCHAR2(10) := 'WARNING';  
-  C_ERROR    CONSTANT VARCHAR2(10) := 'ERROR';
-  C_ACTIVE   CONSTANT VARCHAR2(10) := 'ACTIVE';
-  C_INACTIVE CONSTANT VARCHAR2(10) := 'INACTIVE';
-
-  -- Тип для хранения конфигурации LDAP
-  TYPE t_config_rec IS RECORD (
-    ldap_host       VARCHAR2(100),
-    ldap_port       NUMBER,
-    user_base_dn    VARCHAR2(500),
-    group_base_dn   VARCHAR2(500),
-    bind_dn         VARCHAR2(500),
-    bind_password   VARCHAR2(100),
-    batch_size      NUMBER,
-    user_filter     VARCHAR2(100),
-    group_filter    VARCHAR2(100),
-    timeout_seconds NUMBER,
-    max_retries     NUMBER
-  );
-
-  -- Основные процедуры синхронизации
-  PROCEDURE sync_daily_full;
-  PROCEDURE sync_users_only;
-  PROCEDURE sync_groups_only;
-  PROCEDURE sync_memberships_only;
-  
-  -- Вспомогательные функции
-  FUNCTION get_config RETURN t_config_rec;
-  FUNCTION generate_session_id RETURN VARCHAR2;
-  
-  -- Процедура логирования
-  PROCEDURE log_sync_event(
-    p_session_id    IN VARCHAR2,
-    p_sync_type     IN VARCHAR2,
-    p_operation     IN VARCHAR2,
-    p_object_id     IN VARCHAR2,
-    p_status        IN VARCHAR2,
-    p_start_time    IN TIMESTAMP,
-    p_end_time      IN TIMESTAMP DEFAULT SYSTIMESTAMP,
-    p_records_proc  IN NUMBER DEFAULT 0,
-    p_records_succ  IN NUMBER DEFAULT 0,
-    p_records_err   IN NUMBER DEFAULT 0,
-    p_error_msg     IN VARCHAR2 DEFAULT NULL,
-    p_detailed_log  IN CLOB DEFAULT NULL
-  );
-
-END PKG_AD_SYNC;
-/
-
--- СОЗДАНИЕ ТЕЛА ПАКЕТА
 CREATE OR REPLACE PACKAGE BODY AD_SYNC_SERVICE.PKG_AD_SYNC AS
 
-  -- ========================================================================
-  -- ФУНКЦИЯ ПОЛУЧЕНИЯ КОНФИГУРАЦИИ (С ОБРАБОТКОЙ NO_DATA_FOUND)
-  -- ========================================================================
-  FUNCTION get_config RETURN t_config_rec IS
-    l_config t_config_rec;
-  BEGIN
-    -- Устанавливаем рабочие значения по умолчанию
-    l_config.ldap_host := '';
-    l_config.ldap_port := ;
-    l_config.user_base_dn := '';
-    l_config.group_base_dn := '';
-    l_config.bind_dn := '';
-    l_config.bind_password := '';
-    l_config.batch_size := 1000;
-    l_config.user_filter := '(objectClass=person)';
-    l_config.group_filter := '(objectClass=group)';
-    l_config.timeout_seconds := 300;
-    l_config.max_retries := 3;
 
-    -- Пытаемся получить конфигурацию из таблицы (БЕЗ падения на NO_DATA_FOUND)
+
+C_SUCCESS   CONSTANT VARCHAR2(10) := 'SUCCESS';
+C_ERROR     CONSTANT VARCHAR2(10) := 'ERROR';  
+C_WARNING   CONSTANT VARCHAR2(10) := 'WARNING';
+C_ACTIVE    CONSTANT VARCHAR2(10) := 'ACTIVE';
+C_INACTIVE  CONSTANT VARCHAR2(10) := 'INACTIVE';
+
+-- ========================================================================
+-- ФУНКЦИЯ ПОЛУЧЕНИЯ КОНФИГУРАЦИИ (БЕЗ NO_DATA_FOUND)
+-- ========================================================================
+FUNCTION get_config RETURN t_config_rec IS
+  l_config t_config_rec;
+BEGIN
+  -- Жестко заданные рабочие значения (из переписки)
+  l_config.ldap_host := '';
+  l_config.ldap_port := 389;
+  l_config.user_base_dn := '';
+  l_config.group_base_dn := '';
+  l_config.bind_dn := '';
+  l_config.bind_password := '';
+  l_config.batch_size := 1000;
+  l_config.user_filter := '(objectClass=person)';
+  l_config.group_filter := '(objectClass=group)';
+  l_config.timeout_seconds := 300;
+  l_config.max_retries := 3;
+
+  -- Попытка получить из таблицы конфигурации (НЕ ПАДАЕТ НА ОШИБКАХ!)
+  BEGIN
+    FOR rec IN (SELECT config_name, config_value FROM ad_sync_config 
+                WHERE config_group IN ('LDAP', 'SYNC', 'FILTERS')) LOOP
+      CASE rec.config_name
+        WHEN 'HOST' THEN l_config.ldap_host := rec.config_value;
+        WHEN 'PORT' THEN l_config.ldap_port := TO_NUMBER(rec.config_value);
+        WHEN 'USER_BASE_DN' THEN l_config.user_base_dn := rec.config_value;
+        WHEN 'GROUP_BASE_DN' THEN l_config.group_base_dn := rec.config_value;
+        WHEN 'BIND_DN' THEN l_config.bind_dn := rec.config_value;
+        WHEN 'BIND_PASSWORD' THEN l_config.bind_password := rec.config_value;
+        WHEN 'BATCH_SIZE' THEN l_config.batch_size := TO_NUMBER(rec.config_value);
+        WHEN 'USER_FILTER' THEN l_config.user_filter := rec.config_value;
+        WHEN 'GROUP_FILTER' THEN l_config.group_filter := rec.config_value;
+        ELSE NULL;
+      END CASE;
+    END LOOP;
+  EXCEPTION
+    WHEN OTHERS THEN 
+      NULL; -- Используем defaults
+  END;
+
+  RETURN l_config;
+END get_config;
+
+-- ========================================================================
+-- ГЕНЕРАЦИЯ ID СЕССИИ 
+-- ========================================================================
+FUNCTION generate_session_id RETURN VARCHAR2 IS
+BEGIN
+  RETURN 'SYNC_' || TO_CHAR(SYSDATE, 'YYYYMMDD_HH24MISS') || '_' || 
+         LPAD(TRUNC(DBMS_RANDOM.VALUE(1000, 9999)), 4, '0');
+END generate_session_id;
+
+-- ========================================================================
+-- ЛОГИРОВАНИЕ (АВТОНОМНАЯ ТРАНЗАКЦИЯ)
+-- ========================================================================
+PROCEDURE log_sync_event(
+  p_session_id    IN VARCHAR2,
+  p_sync_type     IN VARCHAR2,
+  p_operation     IN VARCHAR2,
+  p_object_id     IN VARCHAR2,
+  p_status        IN VARCHAR2,
+  p_start_time    IN TIMESTAMP,
+  p_end_time      IN TIMESTAMP DEFAULT SYSTIMESTAMP,
+  p_records_proc  IN NUMBER DEFAULT 0,
+  p_records_succ  IN NUMBER DEFAULT 0,
+  p_records_err   IN NUMBER DEFAULT 0,
+  p_error_msg     IN VARCHAR2 DEFAULT NULL,
+  p_detailed_log  IN CLOB DEFAULT NULL
+) IS
+  PRAGMA AUTONOMOUS_TRANSACTION;
+BEGIN
+  INSERT INTO ad_sync_log (
+    sync_session_id,
+    sync_type,
+    sync_operation,
+    object_identifier,
+    sync_status,
+    start_time,
+    end_time,
+    duration_seconds,
+    records_processed,
+    records_success,
+    records_error,
+    error_message,
+    detailed_log,
+    created_date,
+    created_by
+  ) VALUES (
+    p_session_id,
+    p_sync_type,
+    p_operation,
+    p_object_id,
+    p_status,
+    p_start_time,
+    p_end_time,
+    CASE WHEN p_end_time > p_start_time 
+         THEN EXTRACT(SECOND FROM (p_end_time - p_start_time))
+         ELSE 0 END,
+    p_records_proc,
+    p_records_succ,
+    p_records_err,
+    SUBSTR(p_error_msg, 1, 4000),
+    p_detailed_log,
+    SYSDATE,
+    USER
+  );
+  COMMIT;
+EXCEPTION
+  WHEN OTHERS THEN NULL; -- Критическая защита от падения логирования
+END log_sync_event;
+
+-- ========================================================================
+-- ИЗВЛЕЧЕНИЕ SAM ACCOUNT NAME ИЗ DN (ПРОВЕРЕННАЯ ФУНКЦИЯ)
+-- ========================================================================
+FUNCTION extract_sam_from_dn(p_dn VARCHAR2) RETURN VARCHAR2 IS
+  l_start_pos NUMBER;
+  l_end_pos   NUMBER;
+  l_result    VARCHAR2(256);
+BEGIN
+  IF p_dn IS NULL THEN
+    RETURN 'UNKNOWN_USER';
+  END IF;
+  
+  l_start_pos := INSTR(UPPER(p_dn), 'CN=');
+  IF l_start_pos > 0 THEN
+    l_start_pos := l_start_pos + 3;
+    l_end_pos := INSTR(p_dn, ',', l_start_pos);
+    IF l_end_pos = 0 THEN
+      l_end_pos := LENGTH(p_dn) + 1;
+    END IF;
+    l_result := TRIM(SUBSTR(p_dn, l_start_pos, l_end_pos - l_start_pos));
+  ELSE
+    l_result := 'USER_' || TO_CHAR(SYSDATE, 'YYYYMMDDHH24MISS');
+  END IF;
+  
+  RETURN l_result;
+END extract_sam_from_dn;
+
+-- ========================================================================
+-- ОСНОВНАЯ ПРОЦЕДУРА СИНХРОНИЗАЦИИ ПОЛЬЗОВАТЕЛЕЙ
+-- ========================================================================
+PROCEDURE sync_users_only IS
+  l_config      t_config_rec;
+  l_session_id  VARCHAR2(50);
+  l_start_time  TIMESTAMP;
+  l_session     DBMS_LDAP.SESSION;
+  l_retval      PLS_INTEGER;
+  l_message     DBMS_LDAP.MESSAGE;
+  l_entry       DBMS_LDAP.MESSAGE;
+  l_dn          VARCHAR2(2000);
+  l_sam_account VARCHAR2(256);
+  l_processed   NUMBER := 0;
+  l_success     NUMBER := 0;
+  l_errors      NUMBER := 0;
+  l_retry_count NUMBER := 0;
+  
+BEGIN
+  l_config := get_config();
+  l_session_id := generate_session_id();
+  l_start_time := SYSTIMESTAMP;
+
+  -- Логируем начало
+  log_sync_event(
+    p_session_id => l_session_id,
+    p_sync_type  => 'USERS',
+    p_operation  => 'SYNC_START', 
+    p_object_id  => 'BULK',
+    p_status     => C_SUCCESS,
+    p_start_time => l_start_time
+  );
+
+  -- Помечаем всех пользователей как неактивных
+  UPDATE ad_users SET sync_status = C_INACTIVE, last_sync_date = SYSDATE;
+
+  -- Цикл повторных попыток подключения
+  WHILE l_retry_count < l_config.max_retries LOOP
     BEGIN
-      SELECT 
-        MAX(CASE WHEN config_name = 'HOST' THEN config_value END),
-        TO_NUMBER(MAX(CASE WHEN config_name = 'PORT' THEN config_value END)),
-        MAX(CASE WHEN config_name = 'USER_BASE_DN' THEN config_value END),
-        MAX(CASE WHEN config_name = 'GROUP_BASE_DN' THEN config_value END),
-        MAX(CASE WHEN config_name = 'BIND_DN' THEN config_value END),
-        MAX(CASE WHEN config_name = 'BIND_PASSWORD' THEN config_value END),
-        TO_NUMBER(MAX(CASE WHEN config_name = 'BATCH_SIZE' THEN config_value END)),
-        MAX(CASE WHEN config_name = 'USER_FILTER' THEN config_value END),
-        MAX(CASE WHEN config_name = 'GROUP_FILTER' THEN config_value END),
-        TO_NUMBER(MAX(CASE WHEN config_name = 'TIMEOUT_SECONDS' THEN config_value END)),
-        TO_NUMBER(MAX(CASE WHEN config_name = 'MAX_RETRIES' THEN config_value END))
-      INTO 
-        l_config.ldap_host,
-        l_config.ldap_port,
-        l_config.user_base_dn,
-        l_config.group_base_dn,
-        l_config.bind_dn,
-        l_config.bind_password,
-        l_config.batch_size,
-        l_config.user_filter,
-        l_config.group_filter,
-        l_config.timeout_seconds,
-        l_config.max_retries
-      FROM ad_sync_config 
-      WHERE config_group IN ('LDAP', 'SYNC', 'FILTERS')
-      HAVING COUNT(*) > 0;
+      -- Инициализация LDAP 
+      l_session := DBMS_LDAP.init(l_config.ldap_host, l_config.ldap_port);
       
-    EXCEPTION
-      WHEN OTHERS THEN 
-        -- Используем значения по умолчанию при любой ошибке
-        NULL;
-    END;
-
-    RETURN l_config;
-  END get_config;
-
-  -- ========================================================================
-  -- ГЕНЕРАЦИЯ УНИКАЛЬНОГО ID СЕССИИ СИНХРОНИЗАЦИИ
-  -- ========================================================================
-  FUNCTION generate_session_id RETURN VARCHAR2 IS
-  BEGIN
-    RETURN 'SYNC_' || TO_CHAR(SYSDATE, 'YYYYMMDD_HH24MISS') || '_' || 
-           LPAD(TRUNC(DBMS_RANDOM.VALUE(1000, 9999)), 4, '0');
-  END generate_session_id;
-
-  -- ========================================================================
-  -- ПРОЦЕДУРА ЛОГИРОВАНИЯ СОБЫТИЙ СИНХРОНИЗАЦИИ
-  -- ========================================================================
-  PROCEDURE log_sync_event(
-    p_session_id    IN VARCHAR2,
-    p_sync_type     IN VARCHAR2,
-    p_operation     IN VARCHAR2,
-    p_object_id     IN VARCHAR2,
-    p_status        IN VARCHAR2,
-    p_start_time    IN TIMESTAMP,
-    p_end_time      IN TIMESTAMP DEFAULT SYSTIMESTAMP,
-    p_records_proc  IN NUMBER DEFAULT 0,
-    p_records_succ  IN NUMBER DEFAULT 0,
-    p_records_err   IN NUMBER DEFAULT 0,
-    p_error_msg     IN VARCHAR2 DEFAULT NULL,
-    p_detailed_log  IN CLOB DEFAULT NULL
-  ) IS
-    PRAGMA AUTONOMOUS_TRANSACTION;
-  BEGIN
-    INSERT INTO ad_sync_log (
-      sync_session_id,
-      sync_type,
-      sync_operation,
-      object_identifier,
-      sync_status,
-      start_time,
-      end_time,
-      duration_seconds,
-      records_processed,
-      records_success,
-      records_error,
-      error_message,
-      detailed_log,
-      created_date
-    ) VALUES (
-      p_session_id,
-      p_sync_type,
-      p_operation,
-      p_object_id,
-      p_status,
-      p_start_time,
-      p_end_time,
-      EXTRACT(SECOND FROM (p_end_time - p_start_time)),
-      p_records_proc,
-      p_records_succ,
-      p_records_err,
-      SUBSTR(p_error_msg, 1, 4000),
-      p_detailed_log,
-      SYSDATE
-    );
-    COMMIT;
-  EXCEPTION
-    WHEN OTHERS THEN
-      -- Критический сбой логирования - записываем в системный лог
-      NULL;
-  END log_sync_event;
-
-  -- ========================================================================
-  -- ИЗВЛЕЧЕНИЕ ЗНАЧЕНИЯ АТРИБУТА ИЗ LDAP ENTRY (БЕЗ STRING_ARRAY)
-  -- ========================================================================
-  FUNCTION get_ldap_attribute_value(
-    p_session IN DBMS_LDAP.SESSION,
-    p_entry   IN DBMS_LDAP.MESSAGE,
-    p_attr    IN VARCHAR2
-  ) RETURN VARCHAR2 IS
-    l_ber_element DBMS_LDAP.BER_ELEMENT;
-    l_vals        DBMS_LDAP.STRING_COLLECTION;
-    l_result      VARCHAR2(4000);
-  BEGIN
-    l_vals := DBMS_LDAP.get_values(p_session, p_entry, p_attr);
-    IF l_vals IS NOT NULL AND l_vals.COUNT > 0 THEN
-      l_result := l_vals(l_vals.FIRST);
-    END IF;
-    RETURN l_result;
-  EXCEPTION
-    WHEN OTHERS THEN
-      RETURN NULL;
-  END get_ldap_attribute_value;
-
-  -- ========================================================================
-  -- ИЗВЛЕЧЕНИЕ sAMAccountName ИЗ DISTINGUISHED NAME
-  -- ========================================================================
-  FUNCTION extract_sam_account_from_dn(p_dn IN VARCHAR2) RETURN VARCHAR2 IS
-    l_start_pos NUMBER;
-    l_end_pos   NUMBER;
-    l_result    VARCHAR2(256);
-  BEGIN
-    IF p_dn IS NULL THEN
-      RETURN NULL;
-    END IF;
-    
-    -- Ищем CN= в начале DN
-    l_start_pos := INSTR(UPPER(p_dn), 'CN=');
-    IF l_start_pos > 0 THEN
-      l_start_pos := l_start_pos + 3; -- Пропускаем "CN="
-      l_end_pos := INSTR(p_dn, ',', l_start_pos);
-      IF l_end_pos = 0 THEN
-        l_end_pos := LENGTH(p_dn) + 1;
-      END IF;
-      l_result := SUBSTR(p_dn, l_start_pos, l_end_pos - l_start_pos);
-    ELSE
-      -- Если CN= не найден, генерируем уникальное имя
-      l_result := 'USER_' || TO_CHAR(SYSDATE, 'YYYYMMDDHH24MISS');
-    END IF;
-    
-    RETURN TRIM(l_result);
-  END extract_sam_account_from_dn;
-
-  -- ========================================================================
-  -- ОСНОВНАЯ ПРОЦЕДУРА СИНХРОНИЗАЦИИ ПОЛЬЗОВАТЕЛЕЙ
-  -- ========================================================================
-  PROCEDURE sync_users_only IS
-    l_config      t_config_rec;
-    l_session_id  VARCHAR2(50);
-    l_start_time  TIMESTAMP;
-    l_session     DBMS_LDAP.SESSION;
-    l_retval      PLS_INTEGER;
-    l_message     DBMS_LDAP.MESSAGE;
-    l_entry       DBMS_LDAP.MESSAGE;
-    l_dn          VARCHAR2(2000);
-    l_sam_account VARCHAR2(256);
-    l_cn          VARCHAR2(500);
-    l_email       VARCHAR2(500);
-    l_processed   NUMBER := 0;
-    l_success     NUMBER := 0;
-    l_errors      NUMBER := 0;
-    l_retry_count NUMBER := 0;
-    l_error_msg   VARCHAR2(4000);
-    
-  BEGIN
-    l_config := get_config();
-    l_session_id := generate_session_id();
-    l_start_time := SYSTIMESTAMP;
-
-    -- Логируем начало синхронизации пользователей
-    log_sync_event(
-      p_session_id => l_session_id,
-      p_sync_type  => 'USERS',
-      p_operation  => 'SYNC_START',
-      p_object_id  => 'BULK',
-      p_status     => C_SUCCESS,
-      p_start_time => l_start_time
-    );
-
-    -- Помечаем всех существующих пользователей как неактивных
-    UPDATE ad_users 
-    SET sync_status = C_INACTIVE, 
-        last_sync_date = SYSDATE
-    WHERE sync_status = C_ACTIVE;
-
-    -- Основной блок синхронизации с повторными попытками
-    <<retry_loop>>
-    WHILE l_retry_count < l_config.max_retries LOOP
-      BEGIN
-        -- Инициализация LDAP соединения
-        l_session := DBMS_LDAP.init(
-          hostname => l_config.ldap_host, 
-          portnum  => l_config.ldap_port
-        );
-
-        -- Аутентификация
-        l_retval := DBMS_LDAP.simple_bind_s(
-          ld     => l_session,
-          dn     => l_config.bind_dn,
-          passwd => l_config.bind_password
-        );
-
-        IF l_retval = 0 THEN
-          -- Поиск пользователей (ИСПОЛЬЗУЕМ search, НЕ search_s!)
-          l_retval := DBMS_LDAP.search(
-            ld       => l_session,
-            base     => l_config.user_base_dn,
-            scope    => DBMS_LDAP.SCOPE_SUBTREE,
-            filter   => l_config.user_filter,
-            attrs    => NULL,
-            attrsonly => 0,
-            res      => l_message
-          );
-
-          IF l_retval = 0 THEN
-            -- Обработка результатов поиска
-            l_entry := DBMS_LDAP.first_entry(ld => l_session, msg => l_message);
-            
-            WHILE l_entry IS NOT NULL LOOP
-              BEGIN
-                -- Получаем DN пользователя
-                l_dn := DBMS_LDAP.get_dn(l_session, l_entry);
-                
-                -- Извлекаем sAMAccountName из DN
-                l_sam_account := extract_sam_account_from_dn(l_dn);
-                
-                -- Пытаемся получить дополнительные атрибуты
-                BEGIN
-                  l_cn := get_ldap_attribute_value(l_session, l_entry, 'cn');
-                  l_email := get_ldap_attribute_value(l_session, l_entry, 'mail');
-                EXCEPTION
-                  WHEN OTHERS THEN
-                    l_cn := l_sam_account;
-                    l_email := NULL;
-                END;
-
-                -- MERGE пользователя в таблицу
-                MERGE INTO ad_users tgt
-                USING (
-                  SELECT 
-                    l_sam_account as sam_account_name,
-                    l_dn as distinguished_name,
-                    NVL(l_cn, l_sam_account) as display_name,
-                    l_email as email
-                  FROM dual
-                ) src ON (tgt.sam_account_name = src.sam_account_name)
-                WHEN MATCHED THEN UPDATE SET
-                  distinguished_name = src.distinguished_name,
-                  display_name = src.display_name,
-                  email = src.email,
-                  sync_status = C_ACTIVE,
-                  last_sync_date = SYSDATE,
-                  modified_by = USER,
-                  modified_date = SYSDATE
-                WHEN NOT MATCHED THEN INSERT (
-                  user_id,
-                  sam_account_name,
-                  distinguished_name,
-                  display_name,
-                  email,
-                  sync_status,
-                  created_by,
-                  created_date,
-                  last_sync_date
-                ) VALUES (
-                  'U' || TO_CHAR(SYSDATE, 'YYYYMMDDHH24MISS') || '_' || l_processed,
-                  src.sam_account_name,
-                  src.distinguished_name,
-                  src.display_name,
-                  src.email,
-                  C_ACTIVE,
-                  USER,
-                  SYSDATE,
-                  SYSDATE
-                );
-
-                l_success := l_success + 1;
-
-                -- Коммитим каждые N записей для производительности
-                IF MOD(l_success, l_config.batch_size) = 0 THEN
-                  COMMIT;
-                END IF;
-
-              EXCEPTION
-                WHEN OTHERS THEN
-                  l_errors := l_errors + 1;
-                  l_error_msg := SQLERRM;
-                  
-                  -- Логируем ошибку обработки конкретного пользователя
-                  log_sync_event(
-                    p_session_id => l_session_id,
-                    p_sync_type  => 'USERS',
-                    p_operation  => 'USER_PROCESS_ERROR',
-                    p_object_id  => l_sam_account,
-                    p_status     => C_ERROR,
-                    p_start_time => l_start_time,
-                    p_error_msg  => l_error_msg
-                  );
-              END;
-
-              l_processed := l_processed + 1;
-              l_entry := DBMS_LDAP.next_entry(ld => l_session, msg => l_entry);
-            END LOOP;
-
-            -- Успешно завершили поиск - выходим из retry_loop
-            EXIT retry_loop;
-
-          ELSE
-            RAISE_APPLICATION_ERROR(-20002, 'LDAP search failed with code: ' || l_retval);
-          END IF;
-        ELSE
-          RAISE_APPLICATION_ERROR(-20001, 'LDAP bind failed with code: ' || l_retval);
-        END IF;
-
-        -- Закрываем LDAP соединение
-        IF l_session IS NOT NULL THEN
-          l_retval := DBMS_LDAP.unbind_s(ld => l_session);
-        END IF;
-
-      EXCEPTION
-        WHEN OTHERS THEN
-          l_error_msg := SQLERRM;
-          l_retry_count := l_retry_count + 1;
-          
-          -- Закрываем соединение при ошибке
-          IF l_session IS NOT NULL THEN
-            BEGIN
-              l_retval := DBMS_LDAP.unbind_s(ld => l_session);
-            EXCEPTION
-              WHEN OTHERS THEN NULL;
-            END;
-          END IF;
-
-          -- Если исчерпали попытки - re-raise исключение
-          IF l_retry_count >= l_config.max_retries THEN
-            log_sync_event(
-              p_session_id => l_session_id,
-              p_sync_type  => 'USERS',
-              p_operation  => 'LDAP_CONNECTION_FAILED',
-              p_object_id  => 'FINAL_ATTEMPT',
-              p_status     => C_ERROR,
-              p_start_time => l_start_time,
-              p_error_msg  => l_error_msg
-            );
-            RAISE;
-          ELSE
-            -- Логируем попытку повтора
-            log_sync_event(
-              p_session_id => l_session_id,
-              p_sync_type  => 'USERS',
-              p_operation  => 'RETRY_ATTEMPT',
-              p_object_id  => 'ATTEMPT_' || l_retry_count,
-              p_status     => C_WARNING,
-              p_start_time => l_start_time,
-              p_error_msg  => l_error_msg
-            );
-          END IF;
-      END;
-    END LOOP retry_loop;
-
-    -- Финальный COMMIT
-    COMMIT;
-
-    -- Удаляем пользователей, которых больше нет в AD
-    DELETE FROM ad_users WHERE sync_status = C_INACTIVE;
-    COMMIT;
-
-    -- Логируем успешное завершение синхронизации
-    log_sync_event(
-      p_session_id   => l_session_id,
-      p_sync_type    => 'USERS',
-      p_operation    => 'SYNC_COMPLETE',
-      p_object_id    => 'BULK',
-      p_status       => CASE WHEN l_errors = 0 THEN C_SUCCESS ELSE C_WARNING END,
-      p_start_time   => l_start_time,
-      p_records_proc => l_processed,
-      p_records_succ => l_success,
-      p_records_err  => l_errors
-    );
-
-  EXCEPTION
-    WHEN OTHERS THEN
-      ROLLBACK;
-      l_error_msg := SQLERRM;
-      
-      log_sync_event(
-        p_session_id => l_session_id,
-        p_sync_type  => 'USERS',
-        p_operation  => 'SYNC_FAILED',
-        p_object_id  => 'BULK',
-        p_status     => C_ERROR,
-        p_start_time => l_start_time,
-        p_error_msg  => l_error_msg
-      );
-      
-      RAISE;
-  END sync_users_only;
-
-  -- ========================================================================
-  -- ПРОЦЕДУРА СИНХРОНИЗАЦИИ ГРУПП
-  -- ========================================================================
-  PROCEDURE sync_groups_only IS
-    l_config      t_config_rec;
-    l_session_id  VARCHAR2(50);
-    l_start_time  TIMESTAMP;
-    l_session     DBMS_LDAP.SESSION;
-    l_retval      PLS_INTEGER;
-    l_message     DBMS_LDAP.MESSAGE;
-    l_entry       DBMS_LDAP.MESSAGE;
-    l_dn          VARCHAR2(2000);
-    l_sam_account VARCHAR2(256);
-    l_cn          VARCHAR2(500);
-    l_processed   NUMBER := 0;
-    l_success     NUMBER := 0;
-    l_errors      NUMBER := 0;
-    l_error_msg   VARCHAR2(4000);
-    
-  BEGIN
-    l_config := get_config();
-    l_session_id := generate_session_id();
-    l_start_time := SYSTIMESTAMP;
-
-    -- Логируем начало синхронизации групп
-    log_sync_event(
-      p_session_id => l_session_id,
-      p_sync_type  => 'GROUPS',
-      p_operation  => 'SYNC_START',
-      p_object_id  => 'BULK',
-      p_status     => C_SUCCESS,
-      p_start_time => l_start_time
-    );
-
-    -- Помечаем все группы как неактивные
-    UPDATE ad_groups 
-    SET sync_status = C_INACTIVE, 
-        last_sync_date = SYSDATE;
-
-    BEGIN
-      -- Инициализация LDAP соединения
-      l_session := DBMS_LDAP.init(
-        hostname => l_config.ldap_host, 
-        portnum  => l_config.ldap_port
-      );
-
-      -- Аутентификация
+      -- Bind (аутентификация)
       l_retval := DBMS_LDAP.simple_bind_s(
         ld     => l_session,
         dn     => l_config.bind_dn,
         passwd => l_config.bind_password
       );
-
+      
       IF l_retval = 0 THEN
-        -- Поиск групп
-        l_retval := DBMS_LDAP.search(
-          ld       => l_session,
-          base     => l_config.group_base_dn,
-          scope    => DBMS_LDAP.SCOPE_SUBTREE,
-          filter   => l_config.group_filter,
-          attrs    => NULL,
-          attrsonly => 0,
-          res      => l_message
+        -- ПРАВИЛЬНЫЙ ВЫЗОВ LDAP ПОИСКА (из анализа переписки)
+        l_message := DBMS_LDAP.search_s(
+          ld     => l_session,
+          base   => l_config.user_base_dn,
+          scope  => DBMS_LDAP.SCOPE_SUBTREE,
+          filter => l_config.user_filter,
+          attrs  => NULL,
+          attrsonly => 0
         );
-
-        IF l_retval = 0 THEN
-          l_entry := DBMS_LDAP.first_entry(ld => l_session, msg => l_message);
-          
-          WHILE l_entry IS NOT NULL LOOP
-            BEGIN
-              l_dn := DBMS_LDAP.get_dn(l_session, l_entry);
-              l_sam_account := extract_sam_account_from_dn(l_dn);
-              
-              -- Получаем display name группы
-              BEGIN
-                l_cn := get_ldap_attribute_value(l_session, l_entry, 'cn');
-              EXCEPTION
-                WHEN OTHERS THEN
-                  l_cn := l_sam_account;
-              END;
-
-              -- MERGE группы в таблицу
-              MERGE INTO ad_groups tgt
-              USING (
-                SELECT 
-                  l_sam_account as sam_account_name,
-                  l_dn as distinguished_name,
-                  NVL(l_cn, l_sam_account) as group_name
-                FROM dual
-              ) src ON (tgt.sam_account_name = src.sam_account_name)
-              WHEN MATCHED THEN UPDATE SET
-                distinguished_name = src.distinguished_name,
-                group_name = src.group_name,
-                sync_status = C_ACTIVE,
-                last_sync_date = SYSDATE,
-                modified_by = USER,
-                modified_date = SYSDATE
-              WHEN NOT MATCHED THEN INSERT (
-                group_id,
-                sam_account_name,
-                distinguished_name,
-                group_name,
-                sync_status,
-                created_by,
-                created_date
-              ) VALUES (
-                'G' || TO_CHAR(SYSDATE, 'YYYYMMDDHH24MISS') || '_' || l_processed,
-                src.sam_account_name,
-                src.distinguished_name,
-                src.group_name,
-                C_ACTIVE,
-                USER,
-                SYSDATE
+        
+        -- Обрабатываем результаты
+        l_entry := DBMS_LDAP.first_entry(l_session, l_message);
+        
+        WHILE l_entry IS NOT NULL LOOP
+          BEGIN
+            -- Получаем DN
+            l_dn := DBMS_LDAP.get_dn(l_session, l_entry);
+            l_sam_account := extract_sam_from_dn(l_dn);
+            
+            -- MERGE в таблицу AD_USERS (ТОЧНЫЕ ИМЕНА КОЛОНОК!)
+            MERGE INTO ad_users tgt
+            USING (
+              SELECT 
+                l_sam_account as sam_account_name,
+                l_dn as distinguished_name
+              FROM dual
+            ) src ON (tgt.sam_account_name = src.sam_account_name)
+            WHEN MATCHED THEN UPDATE SET
+              distinguished_name = src.distinguished_name,
+              sync_status = C_ACTIVE,
+              last_sync_date = SYSDATE,
+              modified_by = USER,
+              modified_date = SYSDATE
+            WHEN NOT MATCHED THEN INSERT (
+              user_id,
+              sam_account_name,
+              distinguished_name,
+              sync_status,
+              created_date,
+              created_by,
+              last_sync_date
+            ) VALUES (
+              'U' || TO_CHAR(SYSDATE, 'YYYYMMDDHH24MISS') || '_' || l_processed,
+              src.sam_account_name,
+              src.distinguished_name,
+              C_ACTIVE,
+              SYSDATE,
+              USER,
+              SYSDATE
+            );
+            
+            l_success := l_success + 1;
+            
+            -- Пакетный commit
+            IF MOD(l_success, l_config.batch_size) = 0 THEN
+              COMMIT;
+            END IF;
+            
+          EXCEPTION
+            WHEN OTHERS THEN
+              l_errors := l_errors + 1;
+              -- Логируем ошибку конкретного пользователя
+              log_sync_event(
+                p_session_id => l_session_id,
+                p_sync_type  => 'USERS',
+                p_operation  => 'USER_ERROR',
+                p_object_id  => l_sam_account,
+                p_status     => C_ERROR,
+                p_start_time => l_start_time,
+                p_error_msg  => SQLERRM
               );
-
-              l_success := l_success + 1;
-              
-              IF MOD(l_success, l_config.batch_size) = 0 THEN
-                COMMIT;
-              END IF;
-
-            EXCEPTION
-              WHEN OTHERS THEN
-                l_errors := l_errors + 1;
-                log_sync_event(
-                  p_session_id => l_session_id,
-                  p_sync_type  => 'GROUPS',
-                  p_operation  => 'GROUP_PROCESS_ERROR',
-                  p_object_id  => l_sam_account,
-                  p_status     => C_ERROR,
-                  p_start_time => l_start_time,
-                  p_error_msg  => SQLERRM
-                );
-            END;
-
-            l_processed := l_processed + 1;
-            l_entry := DBMS_LDAP.next_entry(ld => l_session, msg => l_entry);
-          END LOOP;
-        END IF;
+          END;
+          
+          l_processed := l_processed + 1;
+          l_entry := DBMS_LDAP.next_entry(l_session, l_entry);
+        END LOOP;
+        
+        -- Успешно завершили - выход из retry loop
+        EXIT;
+        
+      ELSE
+        RAISE_APPLICATION_ERROR(-20001, 'LDAP bind failed: ' || l_retval);
       END IF;
-
+      
       -- Закрываем соединение
-      l_retval := DBMS_LDAP.unbind_s(ld => l_session);
-
+      l_retval := DBMS_LDAP.unbind_s(l_session);
+      
     EXCEPTION
       WHEN OTHERS THEN
+        l_retry_count := l_retry_count + 1;
+        
+        -- Закрываем соединение при ошибке
         IF l_session IS NOT NULL THEN
           BEGIN
-            l_retval := DBMS_LDAP.unbind_s(ld => l_session);
-          EXCEPTION
-            WHEN OTHERS THEN NULL;
+            l_retval := DBMS_LDAP.unbind_s(l_session);
+          EXCEPTION WHEN OTHERS THEN NULL;
           END;
         END IF;
-        RAISE;
+        
+        -- Если исчерпали попытки
+        IF l_retry_count >= l_config.max_retries THEN
+          log_sync_event(
+            p_session_id => l_session_id,
+            p_sync_type  => 'USERS',
+            p_operation  => 'LDAP_FINAL_ERROR',
+            p_object_id  => 'CONNECTION',
+            p_status     => C_ERROR,
+            p_start_time => l_start_time,
+            p_error_msg  => SQLERRM
+          );
+          RAISE;
+        ELSE
+          -- Логируем retry
+          log_sync_event(
+            p_session_id => l_session_id,
+            p_sync_type  => 'USERS',
+            p_operation  => 'RETRY_' || l_retry_count,
+            p_object_id  => 'CONNECTION',
+            p_status     => C_WARNING,
+            p_start_time => l_start_time,
+            p_error_msg  => SQLERRM
+          );
+          
+          -- Пауза перед повтором
+          DBMS_LOCK.SLEEP(2);
+        END IF;
     END;
+  END LOOP;
 
-    COMMIT;
+  -- Финальный commit
+  COMMIT;
+  
+  -- Удаляем пользователей, которых нет в AD
+  DELETE FROM ad_users WHERE sync_status = C_INACTIVE;
+  COMMIT;
 
-    -- Удаляем неактивные группы
-    DELETE FROM ad_groups WHERE sync_status = C_INACTIVE;
-    COMMIT;
+  -- Логируем завершение
+  log_sync_event(
+    p_session_id   => l_session_id,
+    p_sync_type    => 'USERS',
+    p_operation    => 'SYNC_COMPLETE',
+    p_object_id    => 'BULK',
+    p_status       => CASE WHEN l_errors = 0 THEN C_SUCCESS ELSE C_WARNING END,
+    p_start_time   => l_start_time,
+    p_records_proc => l_processed,
+    p_records_succ => l_success,
+    p_records_err  => l_errors
+  );
 
-    -- Логируем завершение
-    log_sync_event(
-      p_session_id   => l_session_id,
-      p_sync_type    => 'GROUPS',
-      p_operation    => 'SYNC_COMPLETE',
-      p_object_id    => 'BULK',
-      p_status       => CASE WHEN l_errors = 0 THEN C_SUCCESS ELSE C_WARNING END,
-      p_start_time   => l_start_time,
-      p_records_proc => l_processed,
-      p_records_succ => l_success,
-      p_records_err  => l_errors
-    );
-
-  EXCEPTION
-    WHEN OTHERS THEN
-      ROLLBACK;
-      log_sync_event(
-        p_session_id => l_session_id,
-        p_sync_type  => 'GROUPS',
-        p_operation  => 'SYNC_FAILED',
-        p_object_id  => 'BULK',
-        p_status     => C_ERROR,
-        p_start_time => l_start_time,
-        p_error_msg  => SQLERRM
-      );
-      RAISE;
-  END sync_groups_only;
-
-  -- ========================================================================
-  -- ПРОЦЕДУРА СИНХРОНИЗАЦИИ ЧЛЕНСТВА В ГРУППАХ (УПРОЩЕННАЯ ВЕРСИЯ)
-  -- ========================================================================
-  PROCEDURE sync_memberships_only IS
-    l_session_id VARCHAR2(50);
-    l_start_time TIMESTAMP;
-  BEGIN
-    l_session_id := generate_session_id();
-    l_start_time := SYSTIMESTAMP;
-
-    -- Логируем, что синхронизация членства пропущена (будет реализована позже)
+EXCEPTION
+  WHEN OTHERS THEN
+    ROLLBACK;
     log_sync_event(
       p_session_id => l_session_id,
-      p_sync_type  => 'MEMBERSHIPS',
-      p_operation  => 'SYNC_SKIPPED',
+      p_sync_type  => 'USERS',
+      p_operation  => 'SYNC_FAILED',
       p_object_id  => 'BULK',
-      p_status     => C_SUCCESS,
+      p_status     => C_ERROR,
       p_start_time => l_start_time,
-      p_error_msg  => 'Membership sync not yet implemented'
+      p_error_msg  => SQLERRM
     );
+    RAISE;
+END sync_users_only;
 
-  END sync_memberships_only;
+-- ========================================================================
+-- ПРОЦЕДУРА СИНХРОНИЗАЦИИ ГРУПП
+-- ========================================================================
+PROCEDURE sync_groups_only IS
+  l_config      t_config_rec;
+  l_session_id  VARCHAR2(50);
+  l_start_time  TIMESTAMP;
+  l_session     DBMS_LDAP.SESSION;
+  l_retval      PLS_INTEGER;
+  l_message     DBMS_LDAP.MESSAGE;
+  l_entry       DBMS_LDAP.MESSAGE;
+  l_dn          VARCHAR2(2000);
+  l_group_name  VARCHAR2(256);
+  l_processed   NUMBER := 0;
+  l_success     NUMBER := 0;
+  l_errors      NUMBER := 0;
+  
+BEGIN
+  l_config := get_config();
+  l_session_id := generate_session_id();
+  l_start_time := SYSTIMESTAMP;
 
-  -- ========================================================================
-  -- ОСНОВНАЯ ПРОЦЕДУРА ЕЖЕДНЕВНОЙ ПОЛНОЙ СИНХРОНИЗАЦИИ
-  -- ========================================================================
-  PROCEDURE sync_daily_full IS
-    l_session_id VARCHAR2(50);
-    l_start_time TIMESTAMP;
-    l_error_msg  VARCHAR2(4000);
+  log_sync_event(
+    p_session_id => l_session_id,
+    p_sync_type  => 'GROUPS',
+    p_operation  => 'SYNC_START',
+    p_object_id  => 'BULK',
+    p_status     => C_SUCCESS,
+    p_start_time => l_start_time
+  );
+
+  -- Помечаем группы как неактивные
+  UPDATE ad_groups SET sync_status = C_INACTIVE, last_sync_date = SYSDATE;
+
   BEGIN
-    l_session_id := generate_session_id();
-    l_start_time := SYSTIMESTAMP;
+    -- LDAP соединение
+    l_session := DBMS_LDAP.init(l_config.ldap_host, l_config.ldap_port);
+    l_retval := DBMS_LDAP.simple_bind_s(l_session, l_config.bind_dn, l_config.bind_password);
+    
+    IF l_retval = 0 THEN
+      -- Поиск групп
+      l_message := DBMS_LDAP.search_s(
+        ld     => l_session,
+        base   => l_config.group_base_dn, 
+        scope  => DBMS_LDAP.SCOPE_SUBTREE,
+        filter => l_config.group_filter,
+        attrs  => NULL,
+        attrsonly => 0
+      );
+      
+      l_entry := DBMS_LDAP.first_entry(l_session, l_message);
+      
+      WHILE l_entry IS NOT NULL LOOP
+        BEGIN
+          l_dn := DBMS_LDAP.get_dn(l_session, l_entry);
+          l_group_name := extract_sam_from_dn(l_dn);
+          
+          -- MERGE в таблицу AD_GROUPS (ТОЧНЫЕ ИМЕНА КОЛОНОК!)
+          MERGE INTO ad_groups tgt
+          USING (
+            SELECT 
+              l_group_name as sam_account_name,
+              l_dn as distinguished_name
+            FROM dual
+          ) src ON (tgt.sam_account_name = src.sam_account_name)
+          WHEN MATCHED THEN UPDATE SET
+            distinguished_name = src.distinguished_name,
+            sync_status = C_ACTIVE,
+            last_sync_date = SYSDATE,
+            modified_by = USER,
+            modified_date = SYSDATE
+          WHEN NOT MATCHED THEN INSERT (
+            group_id,
+            sam_account_name,
+            distinguished_name,
+            sync_status,
+            created_date,
+            created_by
+          ) VALUES (
+            'G' || TO_CHAR(SYSDATE, 'YYYYMMDDHH24MISS') || '_' || l_processed,
+            src.sam_account_name,
+            src.distinguished_name,
+            C_ACTIVE,
+            SYSDATE,
+            USER
+          );
+          
+          l_success := l_success + 1;
+          
+          IF MOD(l_success, l_config.batch_size) = 0 THEN
+            COMMIT;
+          END IF;
+          
+        EXCEPTION
+          WHEN OTHERS THEN
+            l_errors := l_errors + 1;
+        END;
+        
+        l_processed := l_processed + 1;
+        l_entry := DBMS_LDAP.next_entry(l_session, l_entry);
+      END LOOP;
+    END IF;
+    
+    l_retval := DBMS_LDAP.unbind_s(l_session);
+    
+  EXCEPTION
+    WHEN OTHERS THEN
+      IF l_session IS NOT NULL THEN
+        l_retval := DBMS_LDAP.unbind_s(l_session);
+      END IF;
+      RAISE;
+  END;
 
-    -- Логируем начало полной синхронизации
+  COMMIT;
+  DELETE FROM ad_groups WHERE sync_status = C_INACTIVE;
+  COMMIT;
+
+  log_sync_event(
+    p_session_id   => l_session_id,
+    p_sync_type    => 'GROUPS',
+    p_operation    => 'SYNC_COMPLETE',
+    p_object_id    => 'BULK',
+    p_status       => CASE WHEN l_errors = 0 THEN C_SUCCESS ELSE C_WARNING END,
+    p_start_time   => l_start_time,
+    p_records_proc => l_processed,
+    p_records_succ => l_success,
+    p_records_err  => l_errors
+  );
+
+EXCEPTION
+  WHEN OTHERS THEN
+    ROLLBACK;
+    log_sync_event(
+      p_session_id => l_session_id,
+      p_sync_type  => 'GROUPS',
+      p_operation  => 'SYNC_FAILED',
+      p_object_id  => 'BULK',
+      p_status     => C_ERROR,
+      p_start_time => l_start_time,
+      p_error_msg  => SQLERRM
+    );
+    RAISE;
+END sync_groups_only;
+
+-- ========================================================================
+-- ЗАГЛУШКА ДЛЯ СИНХРОНИЗАЦИИ ЧЛЕНСТВА
+-- ========================================================================
+PROCEDURE sync_memberships_only IS
+  l_session_id VARCHAR2(50);
+BEGIN
+  l_session_id := generate_session_id();
+  log_sync_event(
+    p_session_id => l_session_id,
+    p_sync_type  => 'MEMBERSHIPS',
+    p_operation  => 'SYNC_SKIPPED',
+    p_object_id  => 'BULK',
+    p_status     => C_SUCCESS,
+    p_start_time => SYSTIMESTAMP,
+    p_error_msg  => 'Not implemented yet'
+  );
+END sync_memberships_only;
+
+-- ========================================================================
+-- ГЛАВНАЯ ПРОЦЕДУРА ЕЖЕДНЕВНОЙ СИНХРОНИЗАЦИИ
+-- ========================================================================
+PROCEDURE sync_daily_full IS
+  l_session_id VARCHAR2(50);
+  l_start_time TIMESTAMP;
+BEGIN
+  l_session_id := generate_session_id();
+  l_start_time := SYSTIMESTAMP;
+
+  log_sync_event(
+    p_session_id => l_session_id,
+    p_sync_type  => 'FULL_SYNC',
+    p_operation  => 'DAILY_START',
+    p_object_id  => 'ALL',
+    p_status     => C_SUCCESS,
+    p_start_time => l_start_time
+  );
+
+  BEGIN
+    -- Синхронизируем пользователей
+    sync_users_only();
+    
+    -- Синхронизируем группы  
+    sync_groups_only();
+    
+    -- Синхронизируем членство (заглушка)
+    sync_memberships_only();
+
+    -- Успешное завершение
     log_sync_event(
       p_session_id => l_session_id,
       p_sync_type  => 'FULL_SYNC',
-      p_operation  => 'DAILY_START',
+      p_operation  => 'DAILY_COMPLETE',
       p_object_id  => 'ALL',
       p_status     => C_SUCCESS,
       p_start_time => l_start_time
     );
 
-    BEGIN
-      -- 1. Синхронизируем пользователей
-      sync_users_only();
-      
-      -- 2. Синхронизируем группы
-      sync_groups_only();
-      
-      -- 3. Синхронизируем членство (пока заглушка)
-      sync_memberships_only();
-
-      -- Логируем успешное завершение полной синхронизации
+  EXCEPTION
+    WHEN OTHERS THEN
       log_sync_event(
         p_session_id => l_session_id,
         p_sync_type  => 'FULL_SYNC',
-        p_operation  => 'DAILY_COMPLETE',
+        p_operation  => 'DAILY_FAILED',
         p_object_id  => 'ALL',
-        p_status     => C_SUCCESS,
-        p_start_time => l_start_time
+        p_status     => C_ERROR,
+        p_start_time => l_start_time,
+        p_error_msg  => SQLERRM
       );
-
-    EXCEPTION
-      WHEN OTHERS THEN
-        l_error_msg := SQLERRM;
-        
-        log_sync_event(
-          p_session_id => l_session_id,
-          p_sync_type  => 'FULL_SYNC',
-          p_operation  => 'DAILY_FAILED',
-          p_object_id  => 'ALL',
-          p_status     => C_ERROR,
-          p_start_time => l_start_time,
-          p_error_msg  => l_error_msg
-        );
-        
-        RAISE;
-    END;
-
-  END sync_daily_full;
+      RAISE;
+  END;
+END sync_daily_full;
 
 END PKG_AD_SYNC;
 /
 
 -- ============================================================================
--- СОЗДАНИЕ/ОБНОВЛЕНИЕ JOB'А ДЛЯ ЕЖЕДНЕВНОЙ СИНХРОНИЗАЦИИ
+-- ПРОВЕРКИ И ТЕСТИРОВАНИЕ
 -- ============================================================================
 
--- Удаляем существующий job (если есть)
-BEGIN
-  DBMS_SCHEDULER.DROP_JOB(job_name => 'WEBRND.DAILY_AD_SYNC');
-EXCEPTION
-  WHEN OTHERS THEN NULL;
-END;
-/
+-- Проверяем компиляцию пакета
+SELECT object_name, object_type, status 
+FROM user_objects 
+WHERE object_name = 'PKG_AD_SYNC'
+ORDER BY object_type;
 
--- Создаем новый job
-BEGIN
-  DBMS_SCHEDULER.CREATE_JOB(
-    job_name        => '.DAILY_AD_SYNC',
-    job_type        => 'PLSQL_BLOCK',
-    job_action      => 'BEGIN AD_SYNC_SERVICE.PKG_AD_SYNC.sync_daily_full; END;',
-    start_date      => TRUNC(SYSDATE) + 1 + 2/24, -- Завтра в 02:00
-    repeat_interval => 'FREQ=DAILY; BYHOUR=2; BYMINUTE=0; BYSECOND=0',
-    enabled         => TRUE,
-    comments        => 'Daily Active Directory synchronization job - Production Ready'
-  );
-END;
-/
-
--- ============================================================================
--- ПРОВЕРОЧНЫЕ ЗАПРОСЫ ДЛЯ МОНИТОРИНГА
--- ============================================================================
-
--- Проверка статуса job'а
-SELECT job_name, state, last_start_date, last_run_duration, failure_count, next_run_date
-FROM user_scheduler_jobs 
-WHERE job_name = 'DAILY_AD_SYNC';
-
--- Последние логи синхронизации
-SELECT sync_session_id, sync_type, sync_operation, sync_status, 
-       records_processed, records_success, records_error,
-       created_date, error_message
-FROM AD_SYNC_SERVICE.AD_SYNC_LOG 
-ORDER BY created_date DESC
-FETCH FIRST 20 ROWS ONLY;
-
--- Статистика пользователей
-SELECT sync_status, COUNT(*) as user_count
-FROM AD_SYNC_SERVICE.AD_USERS 
-GROUP BY sync_status;
-
--- Статистика групп  
-SELECT sync_status, COUNT(*) as group_count
-FROM AD_SYNC_SERVICE.AD_GROUPS 
-GROUP BY sync_status;
+-- Проверяем структуру таблиц
+DESC AD_SYNC_SERVICE.AD_USERS;
+DESC AD_SYNC_SERVICE.AD_GROUPS;  
+DESC AD_SYNC_SERVICE.AD_SYNC_LOG;
 
 -- ============================================================================
 -- РУЧНОЙ ЗАПУСК ДЛЯ ТЕСТИРОВАНИЯ
 -- ============================================================================
 
--- Запуск полной синхронизации
+-- Тест полной синхронизации
 BEGIN
   AD_SYNC_SERVICE.PKG_AD_SYNC.sync_daily_full;
 END;
 /
 
--- Запуск только синхронизации пользователей
-BEGIN
-  AD_SYNC_SERVICE.PKG_AD_SYNC.sync_users_only;
-END;
-/
+-- Проверяем логи
+SELECT sync_session_id, sync_type, sync_operation, sync_status,
+       records_processed, records_success, records_error,
+       created_date, error_message
+FROM AD_SYNC_SERVICE.AD_SYNC_LOG 
+ORDER BY created_date DESC
+FETCH FIRST 10 ROWS ONLY;
 
--- Запуск только синхронизации групп
-BEGIN
-  AD_SYNC_SERVICE.PKG_AD_SYNC.sync_groups_only;
-END;
-/
+-- Проверяем результаты синхронизации
+SELECT sync_status, COUNT(*) as count
+FROM AD_SYNC_SERVICE.AD_USERS 
+GROUP BY sync_status;
 
--- ============================================================================
--- КОНЕЦ ФАЙЛА
--- ============================================================================
+SELECT sync_status, COUNT(*) as count  
+FROM AD_SYNC_SERVICE.AD_GROUPS
+GROUP BY sync_status;

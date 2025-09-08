@@ -1,0 +1,804 @@
+
+BEGIN
+  BEGIN
+    EXECUTE IMMEDIATE 'ALTER TABLE ad_departments ADD (
+      display_name        VARCHAR2(500),
+      common_name         VARCHAR2(500), 
+      ou_name             VARCHAR2(500),
+      description_full    VARCHAR2(2000),
+      street_address      VARCHAR2(500),
+      city_name           VARCHAR2(100),
+      state_name          VARCHAR2(100),
+      postal_code         VARCHAR2(20),
+      telephone_number    VARCHAR2(50),
+      fax_number          VARCHAR2(50),
+      manager_dn          VARCHAR2(1000),
+      manager_name        VARCHAR2(500),
+      cost_center         VARCHAR2(50),
+      parent_ou_dn        VARCHAR2(1000),
+      ou_level            NUMBER,
+      ou_path             VARCHAR2(2000),
+      when_created        DATE,
+      guid_value          VARCHAR2(100),
+      all_attributes_json CLOB,
+      attribute_count     NUMBER
+    )';
+    DBMS_OUTPUT.PUT_LINE('✓ Колонки добавлены в ad_departments');
+  EXCEPTION
+    WHEN OTHERS THEN
+      DBMS_OUTPUT.PUT_LINE('⚠ Колонки уже существуют или ошибка: ' || SQLERRM);
+  END;
+END;
+/
+
+-- Создаем индексы для быстрого поиска
+CREATE INDEX idx_dept_display_name ON ad_departments(display_name);
+CREATE INDEX idx_dept_ou_level ON ad_departments(ou_level);
+CREATE INDEX idx_dept_manager ON ad_departments(manager_dn);
+
+-- Проверяем что колонки добавились
+SELECT column_name FROM user_tab_columns 
+WHERE table_name = 'AD_DEPARTMENTS' AND column_name IN ('DISPLAY_NAME', 'OU_LEVEL', 'ALL_ATTRIBUTES_JSON');
+
+-- ============================================================================
+-- ШАГ 2: ДОБАВЛЯЕМ ФУНКЦИИ В СУЩЕСТВУЮЩИЙ ПАКЕТ PKG_AD_SYNC
+-- ============================================================================
+
+-- Добавляем в спецификацию процедуры для подразделений
+CREATE OR REPLACE PACKAGE AD_SYNC_SERVICE.PKG_AD_SYNC AS
+
+  -- Существующие константы
+  C_SUCCESS   CONSTANT VARCHAR2(10) := 'SUCCESS';
+  C_ERROR     CONSTANT VARCHAR2(10) := 'ERROR';
+  C_WARNING   CONSTANT VARCHAR2(10) := 'WARNING';
+  C_ACTIVE    CONSTANT VARCHAR2(10) := 'ACTIVE';
+  C_INACTIVE  CONSTANT VARCHAR2(10) := 'INACTIVE';
+
+  -- Существующие типы
+  TYPE t_config_rec IS RECORD (
+    ldap_host         VARCHAR2(256),
+    ldap_port         NUMBER,
+    user_base_dn      VARCHAR2(512),
+    dept_base_dn      VARCHAR2(512),  -- добавили для подразделений
+    bind_dn           VARCHAR2(512),
+    bind_password     VARCHAR2(256),
+    batch_size        NUMBER,
+    user_filter       VARCHAR2(512),
+    dept_filter       VARCHAR2(512),  -- добавили фильтр для подразделений
+    timeout_seconds   NUMBER,
+    max_retries       NUMBER
+  );
+
+  TYPE t_required_attrs IS TABLE OF VARCHAR2(256) INDEX BY PLS_INTEGER;
+
+  -- НОВЫЕ ПРОЦЕДУРЫ ДЛЯ ПОДРАЗДЕЛЕНИЙ
+  PROCEDURE explore_departments_fast;
+  PROCEDURE sync_all_departments;
+  
+  -- Существующие процедуры
+  FUNCTION get_config RETURN t_config_rec;
+  FUNCTION generate_session_id RETURN VARCHAR2;
+  FUNCTION get_ldap_attribute_value(
+    p_session IN DBMS_LDAP.SESSION,
+    p_entry IN DBMS_LDAP.MESSAGE,
+    p_attribute_name IN VARCHAR2
+  ) RETURN VARCHAR2;
+  
+  PROCEDURE sync_users_only;
+  PROCEDURE log_sync_event(
+    p_session_id    IN VARCHAR2,
+    p_sync_type     IN VARCHAR2,
+    p_operation     IN VARCHAR2,
+    p_object_id     IN VARCHAR2,
+    p_status        IN VARCHAR2,
+    p_start_time    IN TIMESTAMP,
+    p_end_time      IN TIMESTAMP DEFAULT SYSTIMESTAMP,
+    p_records_proc  IN NUMBER DEFAULT 0,
+    p_records_succ  IN NUMBER DEFAULT 0,
+    p_records_err   IN NUMBER DEFAULT 0,
+    p_error_msg     IN VARCHAR2 DEFAULT NULL,
+    p_detailed_log  IN CLOB DEFAULT NULL
+  );
+
+END PKG_AD_SYNC;
+/
+
+-- ============================================================================
+-- ШАГ 3: ОБНОВЛЯЕМ ТЕЛО ПАКЕТА С ПРОЦЕДУРАМИ ДЛЯ ПОДРАЗДЕЛЕНИЙ
+-- ============================================================================
+
+CREATE OR REPLACE PACKAGE BODY AD_SYNC_SERVICE.PKG_AD_SYNC AS
+
+  -- Собственная функция задержки
+  PROCEDURE custom_sleep(p_seconds IN NUMBER) IS
+    l_start_time DATE;
+    l_current_time DATE;
+    l_dummy NUMBER;
+  BEGIN
+    l_start_time := SYSDATE;
+    LOOP
+      SELECT 1 INTO l_dummy FROM dual WHERE ROWNUM = 1;
+      l_current_time := SYSDATE;
+      EXIT WHEN (l_current_time - l_start_time) * 24 * 3600 >= p_seconds;
+    END LOOP;
+  END custom_sleep;
+
+  -- Получение значения атрибута из LDAP
+  FUNCTION get_ldap_attribute_value(
+    p_session IN DBMS_LDAP.SESSION,
+    p_entry IN DBMS_LDAP.MESSAGE,
+    p_attribute_name IN VARCHAR2
+  ) RETURN VARCHAR2 IS
+    l_values      DBMS_LDAP.STRING_COLLECTION;
+    l_value_count NUMBER;
+  BEGIN
+    l_values := DBMS_LDAP.get_values(
+      ld => p_session,
+      ldapentry => p_entry,
+      attr => p_attribute_name
+    );
+    
+    l_value_count := DBMS_LDAP.count_values(l_values);
+    IF l_value_count > 0 THEN
+      RETURN l_values(l_values.FIRST);
+    ELSE
+      RETURN NULL;
+    END IF;
+    
+  EXCEPTION
+    WHEN OTHERS THEN
+      RETURN NULL;
+  END get_ldap_attribute_value;
+
+  -- КОНФИГУРАЦИЯ (НАСТРОЙ ПОД СВОЙ AD!)
+  FUNCTION get_config RETURN t_config_rec IS
+    l_config t_config_rec;
+  BEGIN
+    -- *** ЗАМЕНИ НА СВОИ РЕАЛЬНЫЕ ЗНАЧЕНИЯ ***
+    l_config.ldap_host := 'your-ad-server.domain.local';
+    l_config.ldap_port := 389;
+    l_config.user_base_dn := 'OU=Users,DC=domain,DC=local';
+    l_config.dept_base_dn := 'DC=domain,DC=local';  -- базовый DN для поиска подразделений
+    l_config.bind_dn := 'CN=service-user,DC=domain,DC=local';
+    l_config.bind_password := 'SERVICE_PASSWORD';
+    -- *** КОНЕЦ БЛОКА ДЛЯ ЗАМЕНЫ ***
+    
+    l_config.batch_size := 30;  -- уменьшено для избежания Internal Server Error
+    l_config.user_filter := '(&(objectClass=person)(sAMAccountName=*)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))';
+    l_config.dept_filter := '(objectClass=organizationalUnit)';  -- фильтр для подразделений
+    l_config.timeout_seconds := 300;
+    l_config.max_retries := 3;
+
+    RETURN l_config;
+  END get_config;
+
+  -- Генерация ID сессии
+  FUNCTION generate_session_id RETURN VARCHAR2 IS
+  BEGIN
+    RETURN 'SYNC_' || TO_CHAR(SYSDATE, 'YYYYMMDD_HH24MISS') || '_' || 
+           LPAD(TRUNC(DBMS_RANDOM.VALUE(1000, 9999)), 4, '0');
+  END generate_session_id;
+
+  -- Логирование
+  PROCEDURE log_sync_event(
+    p_session_id    IN VARCHAR2,
+    p_sync_type     IN VARCHAR2,
+    p_operation     IN VARCHAR2,
+    p_object_id     IN VARCHAR2,
+    p_status        IN VARCHAR2,
+    p_start_time    IN TIMESTAMP,
+    p_end_time      IN TIMESTAMP DEFAULT SYSTIMESTAMP,
+    p_records_proc  IN NUMBER DEFAULT 0,
+    p_records_succ  IN NUMBER DEFAULT 0,
+    p_records_err   IN NUMBER DEFAULT 0,
+    p_error_msg     IN VARCHAR2 DEFAULT NULL,
+    p_detailed_log  IN CLOB DEFAULT NULL
+  ) IS
+    PRAGMA AUTONOMOUS_TRANSACTION;
+  BEGIN
+    INSERT INTO ad_sync_log (
+      sync_session_id, sync_type, sync_operation, object_identifier, sync_status,
+      start_time, end_time, duration_seconds, records_processed, records_success, 
+      records_error, error_message, detailed_log, created_date, created_by
+    ) VALUES (
+      p_session_id, p_sync_type, p_operation, p_object_id, p_status,
+      p_start_time, p_end_time, 
+      CASE WHEN p_end_time > p_start_time 
+           THEN EXTRACT(SECOND FROM (p_end_time - p_start_time))
+           ELSE 0 END,
+      p_records_proc, p_records_succ, p_records_err, 
+      SUBSTR(p_error_msg, 1, 4000), p_detailed_log, SYSDATE, USER
+    );
+    COMMIT;
+  EXCEPTION
+    WHEN OTHERS THEN NULL;
+  END log_sync_event;
+
+  -- Вычисление уровня OU в иерархии
+  FUNCTION calc_ou_level(p_dn VARCHAR2, p_base_dn VARCHAR2) RETURN NUMBER IS
+    l_clean_dn VARCHAR2(2000);
+    l_ou_count NUMBER := 0;
+  BEGIN
+    l_clean_dn := REPLACE(UPPER(p_dn), UPPER(p_base_dn), '');
+    
+    -- Считаем количество OU= в DN
+    l_ou_count := (LENGTH(l_clean_dn) - LENGTH(REPLACE(UPPER(l_clean_dn), 'OU=', ''))) / 3;
+    
+    RETURN l_ou_count;
+  EXCEPTION
+    WHEN OTHERS THEN
+      RETURN 0;
+  END calc_ou_level;
+
+  -- Получение родительского OU
+  FUNCTION get_parent_dn(p_dn VARCHAR2) RETURN VARCHAR2 IS
+    l_comma_pos NUMBER;
+  BEGIN
+    l_comma_pos := INSTR(p_dn, ',', 1, 1);
+    IF l_comma_pos > 0 THEN
+      RETURN TRIM(SUBSTR(p_dn, l_comma_pos + 1));
+    END IF;
+    RETURN NULL;
+  END get_parent_dn;
+
+  -- Построение пути OU
+  FUNCTION build_path(p_dn VARCHAR2) RETURN VARCHAR2 IS
+    l_path VARCHAR2(2000) := '';
+    l_temp_dn VARCHAR2(2000) := p_dn;
+    l_pos NUMBER;
+    l_component VARCHAR2(500);
+    l_count NUMBER := 0;
+  BEGIN
+    WHILE l_temp_dn IS NOT NULL AND l_count < 10 LOOP
+      l_pos := INSTR(l_temp_dn, ',');
+      IF l_pos > 0 THEN
+        l_component := TRIM(SUBSTR(l_temp_dn, 1, l_pos - 1));
+        l_temp_dn := TRIM(SUBSTR(l_temp_dn, l_pos + 1));
+      ELSE
+        l_component := l_temp_dn;
+        l_temp_dn := NULL;
+      END IF;
+      
+      IF UPPER(l_component) LIKE 'OU=%' THEN
+        l_component := SUBSTR(l_component, 4);
+        IF l_path IS NOT NULL THEN
+          l_path := l_component || ' > ' || l_path;
+        ELSE
+          l_path := l_component;
+        END IF;
+      END IF;
+      
+      l_count := l_count + 1;
+    END LOOP;
+    
+    RETURN l_path;
+  END build_path;
+
+  -- ============================================================================
+  -- БЫСТРОЕ ИССЛЕДОВАНИЕ ПОДРАЗДЕЛЕНИЙ
+  -- ============================================================================
+  PROCEDURE explore_departments_fast IS
+    l_config      t_config_rec;
+    l_session     DBMS_LDAP.SESSION;
+    l_retval      PLS_INTEGER;
+    l_message     DBMS_LDAP.MESSAGE;
+    l_entry       DBMS_LDAP.MESSAGE;
+    l_dn          VARCHAR2(2000);
+    l_attrs       DBMS_LDAP.STRING_COLLECTION;
+    l_attr_name   VARCHAR2(256);
+    l_ber_element DBMS_LDAP.BER_ELEMENT;
+    l_count       NUMBER := 0;
+    l_dept_count  NUMBER := 0;
+    
+    TYPE t_attr_set IS TABLE OF NUMBER INDEX BY VARCHAR2(256);
+    l_all_attrs t_attr_set;
+    l_attr_key  VARCHAR2(256);
+  BEGIN
+    l_config := get_config();
+    
+    DBMS_OUTPUT.ENABLE(1000000);
+    DBMS_OUTPUT.PUT_LINE('=== БЫСТРОЕ ИССЛЕДОВАНИЕ ПОДРАЗДЕЛЕНИЙ ===');
+    DBMS_OUTPUT.PUT_LINE('Сервер: ' || l_config.ldap_host);
+    DBMS_OUTPUT.PUT_LINE('Базовый DN: ' || l_config.dept_base_dn);
+    DBMS_OUTPUT.PUT_LINE('==========================================');
+    
+    BEGIN
+      l_session := DBMS_LDAP.init(l_config.ldap_host, l_config.ldap_port);
+      l_retval := DBMS_LDAP.simple_bind_s(l_session, l_config.bind_dn, l_config.bind_password);
+      
+      IF l_retval = DBMS_LDAP.SUCCESS THEN
+        DBMS_OUTPUT.PUT_LINE('✓ Подключение успешно');
+        
+        l_retval := DBMS_LDAP.search_s(
+          ld => l_session,
+          base => l_config.dept_base_dn,
+          scope => DBMS_LDAP.SCOPE_SUBTREE,
+          filter => l_config.dept_filter,
+          attrs => l_attrs,
+          attronly => 0,
+          res => l_message
+        );
+        
+        IF l_retval = DBMS_LDAP.SUCCESS THEN
+          DBMS_OUTPUT.PUT_LINE('✓ Поиск подразделений успешен');
+          l_entry := DBMS_LDAP.first_entry(l_session, l_message);
+          
+          -- Собираем все уникальные атрибуты с первых 20 подразделений
+          WHILE l_entry IS NOT NULL AND l_dept_count < 20 LOOP
+            l_dn := DBMS_LDAP.get_dn(l_session, l_entry);
+            l_dept_count := l_dept_count + 1;
+            
+            DBMS_OUTPUT.PUT_LINE(l_dept_count || '. ' || 
+                               get_ldap_attribute_value(l_session, l_entry, 'name') ||
+                               ' [уровень: ' || calc_ou_level(l_dn, l_config.dept_base_dn) || ']');
+            
+            -- Собираем атрибуты этого подразделения
+            l_attr_name := DBMS_LDAP.first_attribute(l_session, l_entry, l_ber_element);
+            WHILE l_attr_name IS NOT NULL LOOP
+              l_all_attrs(l_attr_name) := 1;
+              l_attr_name := DBMS_LDAP.next_attribute(l_session, l_entry, l_ber_element);
+            END LOOP;
+            
+            l_entry := DBMS_LDAP.next_entry(l_session, l_entry);
+          END LOOP;
+        ELSE
+          DBMS_OUTPUT.PUT_LINE('✗ Ошибка поиска: ' || l_retval);
+        END IF;
+      ELSE
+        DBMS_OUTPUT.PUT_LINE('✗ Ошибка подключения: ' || l_retval);
+      END IF;
+      
+      l_retval := DBMS_LDAP.unbind_s(l_session);
+      
+    EXCEPTION
+      WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('✗ ИСКЛЮЧЕНИЕ: ' || SQLERRM);
+        IF l_session IS NOT NULL THEN
+          l_retval := DBMS_LDAP.unbind_s(l_session);
+        END IF;
+    END;
+    
+    -- Показываем найденные атрибуты
+    DBMS_OUTPUT.PUT_LINE('==========================================');
+    DBMS_OUTPUT.PUT_LINE('НАЙДЕННЫЕ АТРИБУТЫ ПОДРАЗДЕЛЕНИЙ:');
+    DBMS_OUTPUT.PUT_LINE('==========================================');
+    
+    l_attr_key := l_all_attrs.FIRST;
+    l_count := 0;
+    WHILE l_attr_key IS NOT NULL LOOP
+      l_count := l_count + 1;
+      DBMS_OUTPUT.PUT_LINE(LPAD(l_count, 3, '0') || '. ' || l_attr_key);
+      l_attr_key := l_all_attrs.NEXT(l_attr_key);
+    END LOOP;
+    
+    DBMS_OUTPUT.PUT_LINE('==========================================');
+    DBMS_OUTPUT.PUT_LINE('ОБРАБОТАНО ПОДРАЗДЕЛЕНИЙ: ' || l_dept_count);
+    DBMS_OUTPUT.PUT_LINE('НАЙДЕНО АТРИБУТОВ: ' || l_count);
+    DBMS_OUTPUT.PUT_LINE('==========================================');
+  END explore_departments_fast;
+
+  -- ============================================================================
+  -- СИНХРОНИЗАЦИЯ ВСЕХ ПОДРАЗДЕЛЕНИЙ
+  -- ============================================================================
+  PROCEDURE sync_all_departments IS
+    l_config        t_config_rec;
+    l_session_id    VARCHAR2(50);
+    l_start_time    TIMESTAMP;
+    l_session       DBMS_LDAP.SESSION;
+    l_retval        PLS_INTEGER;
+    l_message       DBMS_LDAP.MESSAGE;
+    l_entry         DBMS_LDAP.MESSAGE;
+    l_dn            VARCHAR2(2000);
+    l_processed     NUMBER := 0;
+    l_success       NUMBER := 0;
+    l_errors        NUMBER := 0;
+    l_attrs         DBMS_LDAP.STRING_COLLECTION;
+    l_dept_id       VARCHAR2(100);
+    l_attr_name     VARCHAR2(256);
+    l_ber_element   DBMS_LDAP.BER_ELEMENT;
+    l_attr_count    NUMBER := 0;
+    l_json_attrs    CLOB;
+    
+    -- Переменные для основных атрибутов
+    l_name          VARCHAR2(500);
+    l_display_name  VARCHAR2(500);
+    l_cn            VARCHAR2(500);
+    l_ou            VARCHAR2(500);
+    l_description   VARCHAR2(2000);
+    l_street        VARCHAR2(500);
+    l_city          VARCHAR2(100);
+    l_state         VARCHAR2(100);
+    l_postal        VARCHAR2(20);
+    l_phone         VARCHAR2(50);
+    l_fax           VARCHAR2(50);
+    l_manager       VARCHAR2(1000);
+    l_cost_center   VARCHAR2(50);
+    l_parent        VARCHAR2(1000);
+    l_level         NUMBER;
+    l_path          VARCHAR2(2000);
+    l_guid          VARCHAR2(100);
+    
+  BEGIN
+    l_config := get_config();
+    l_session_id := generate_session_id();
+    l_start_time := SYSTIMESTAMP;
+
+    DBMS_OUTPUT.ENABLE(1000000);
+    DBMS_OUTPUT.PUT_LINE('=== ЗАПУСК СИНХРОНИЗАЦИИ ПОДРАЗДЕЛЕНИЙ ===');
+
+    log_sync_event(l_session_id, 'DEPARTMENTS', 'SYNC_START', 'BULK', 
+                   C_SUCCESS, l_start_time);
+
+    -- Помечаем все подразделения как неактивные
+    UPDATE ad_departments 
+    SET sync_status = C_INACTIVE, last_sync_date = SYSDATE
+    WHERE NVL(sync_source, 'LDAP') = 'LDAP';
+
+    BEGIN
+      l_session := DBMS_LDAP.init(l_config.ldap_host, l_config.ldap_port);
+      l_retval := DBMS_LDAP.simple_bind_s(l_session, l_config.bind_dn, l_config.bind_password);
+      
+      IF l_retval = DBMS_LDAP.SUCCESS THEN
+        DBMS_OUTPUT.PUT_LINE('✓ Подключение к AD успешно');
+        
+        l_retval := DBMS_LDAP.search_s(
+          ld => l_session,
+          base => l_config.dept_base_dn,
+          scope => DBMS_LDAP.SCOPE_SUBTREE,
+          filter => l_config.dept_filter,
+          attrs => l_attrs,
+          attronly => 0,
+          res => l_message
+        );
+        
+        IF l_retval = DBMS_LDAP.SUCCESS THEN
+          DBMS_OUTPUT.PUT_LINE('✓ Поиск подразделений успешен');
+          l_entry := DBMS_LDAP.first_entry(l_session, l_message);
+          
+          WHILE l_entry IS NOT NULL LOOP
+            BEGIN
+              l_dn := DBMS_LDAP.get_dn(l_session, l_entry);
+              l_dept_id := 'DEPT_' || TO_CHAR(SYSDATE, 'YYYYMMDDHH24MISS') || '_' || l_processed;
+              
+              -- ПОЛУЧАЕМ ОСНОВНЫЕ АТРИБУТЫ
+              l_name := get_ldap_attribute_value(l_session, l_entry, 'name');
+              l_display_name := get_ldap_attribute_value(l_session, l_entry, 'displayName');
+              l_cn := get_ldap_attribute_value(l_session, l_entry, 'cn');
+              l_ou := get_ldap_attribute_value(l_session, l_entry, 'ou');
+              l_description := get_ldap_attribute_value(l_session, l_entry, 'description');
+              l_street := get_ldap_attribute_value(l_session, l_entry, 'streetAddress');
+              l_city := get_ldap_attribute_value(l_session, l_entry, 'l');
+              l_state := get_ldap_attribute_value(l_session, l_entry, 'st');
+              l_postal := get_ldap_attribute_value(l_session, l_entry, 'postalCode');
+              l_phone := get_ldap_attribute_value(l_session, l_entry, 'telephoneNumber');
+              l_fax := get_ldap_attribute_value(l_session, l_entry, 'facsimileTelephoneNumber');
+              l_manager := get_ldap_attribute_value(l_session, l_entry, 'managedBy');
+              l_cost_center := get_ldap_attribute_value(l_session, l_entry, 'costCenter');
+              l_guid := get_ldap_attribute_value(l_session, l_entry, 'objectGUID');
+              
+              -- ВЫЧИСЛЯЕМЫЕ ПОЛЯ
+              l_parent := get_parent_dn(l_dn);
+              l_level := calc_ou_level(l_dn, l_config.dept_base_dn);
+              l_path := build_path(l_dn);
+              
+              -- СОБИРАЕМ ВСЕ АТРИБУТЫ В JSON
+              l_json_attrs := '{';
+              l_attr_name := DBMS_LDAP.first_attribute(l_session, l_entry, l_ber_element);
+              l_attr_count := 0;
+              
+              WHILE l_attr_name IS NOT NULL LOOP
+                IF l_attr_count > 0 THEN
+                  l_json_attrs := l_json_attrs || ',';
+                END IF;
+                
+                l_json_attrs := l_json_attrs || '"' || l_attr_name || '":"' || 
+                              REPLACE(REPLACE(REPLACE(get_ldap_attribute_value(l_session, l_entry, l_attr_name), 
+                                     '"', '\"'), CHR(10), '\n'), CHR(13), '\r') || '"';
+                
+                l_attr_count := l_attr_count + 1;
+                l_attr_name := DBMS_LDAP.next_attribute(l_session, l_entry, l_ber_element);
+                
+                -- Ограничиваем количество атрибутов для избежания CLOB переполнения
+                IF l_attr_count >= 100 THEN
+                  EXIT;
+                END IF;
+              END LOOP;
+              
+              l_json_attrs := l_json_attrs || '}';
+              
+              -- СОХРАНЯЕМ ПОДРАЗДЕЛЕНИЕ
+              MERGE INTO ad_departments tgt
+              USING (
+                SELECT l_dn as distinguished_name FROM dual
+              ) src ON (tgt.distinguished_name = src.distinguished_name)
+              WHEN MATCHED THEN UPDATE SET
+                department_name = NVL(l_name, l_display_name),
+                display_name = l_display_name,
+                common_name = l_cn,
+                ou_name = l_ou,
+                description_full = l_description,
+                street_address = l_street,
+                city_name = l_city,
+                state_name = l_state,
+                postal_code = l_postal,
+                telephone_number = l_phone,
+                fax_number = l_fax,
+                manager_dn = l_manager,
+                cost_center = l_cost_center,
+                parent_ou_dn = l_parent,
+                ou_level = l_level,
+                ou_path = l_path,
+                guid_value = l_guid,
+                all_attributes_json = l_json_attrs,
+                attribute_count = l_attr_count,
+                sync_status = C_ACTIVE,
+                last_sync_date = SYSDATE,
+                modified_by = USER,
+                modified_date = SYSDATE
+              WHEN NOT MATCHED THEN INSERT (
+                department_id, distinguished_name, department_name,
+                display_name, common_name, ou_name, description_full,
+                street_address, city_name, state_name, postal_code,
+                telephone_number, fax_number, manager_dn, cost_center,
+                parent_ou_dn, ou_level, ou_path, guid_value,
+                all_attributes_json, attribute_count,
+                sync_status, created_date, created_by, last_sync_date
+              ) VALUES (
+                l_dept_id, src.distinguished_name, NVL(l_name, l_display_name),
+                l_display_name, l_cn, l_ou, l_description,
+                l_street, l_city, l_state, l_postal,
+                l_phone, l_fax, l_manager, l_cost_center,
+                l_parent, l_level, l_path, l_guid,
+                l_json_attrs, l_attr_count,
+                C_ACTIVE, SYSDATE, USER, SYSDATE
+              );
+              
+              l_success := l_success + 1;
+              
+              -- Показываем прогресс
+              IF MOD(l_success, 10) = 0 THEN
+                DBMS_OUTPUT.PUT_LINE('Обработано: ' || l_success || ' подразделений');
+              END IF;
+              
+              -- Периодические коммиты
+              IF MOD(l_success, l_config.batch_size) = 0 THEN
+                COMMIT;
+              END IF;
+              
+            EXCEPTION
+              WHEN OTHERS THEN
+                l_errors := l_errors + 1;
+                DBMS_OUTPUT.PUT_LINE('✗ Ошибка обработки ' || SUBSTR(l_dn, 1, 50) || ': ' || SUBSTR(SQLERRM, 1, 100));
+                log_sync_event(l_session_id, 'DEPARTMENTS', 'DEPT_ERROR', 
+                              SUBSTR(l_dn, 1, 500), C_ERROR, l_start_time, 
+                              p_error_msg => SQLERRM);
+            END;
+            
+            l_processed := l_processed + 1;
+            l_entry := DBMS_LDAP.next_entry(l_session, l_entry);
+          END LOOP;
+        ELSE
+          DBMS_OUTPUT.PUT_LINE('✗ Ошибка поиска подразделений: ' || l_retval);
+        END IF;
+      ELSE
+        DBMS_OUTPUT.PUT_LINE('✗ Ошибка подключения к AD: ' || l_retval);
+      END IF;
+      
+      l_retval := DBMS_LDAP.unbind_s(l_session);
+      
+    EXCEPTION
+      WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('✗ КРИТИЧЕСКАЯ ОШИБКА: ' || SQLERRM);
+        IF l_session IS NOT NULL THEN
+          BEGIN
+            l_retval := DBMS_LDAP.unbind_s(l_session);
+          EXCEPTION WHEN OTHERS THEN NULL;
+          END;
+        END IF;
+        RAISE;
+    END;
+
+    COMMIT;
+    
+    -- Удаляем неактивные подразделения
+    DELETE FROM ad_departments 
+    WHERE sync_status = C_INACTIVE AND NVL(sync_source, 'LDAP') = 'LDAP';
+    COMMIT;
+
+    DBMS_OUTPUT.PUT_LINE('==========================================');
+    DBMS_OUTPUT.PUT_LINE('✓ СИНХРОНИЗАЦИЯ ЗАВЕРШЕНА');
+    DBMS_OUTPUT.PUT_LINE('Обработано: ' || l_processed);
+    DBMS_OUTPUT.PUT_LINE('Успешно: ' || l_success);
+    DBMS_OUTPUT.PUT_LINE('Ошибок: ' || l_errors);
+    DBMS_OUTPUT.PUT_LINE('==========================================');
+
+    -- Финальное логирование
+    log_sync_event(l_session_id, 'DEPARTMENTS', 'SYNC_COMPLETE', 'BULK',
+                   CASE WHEN l_errors = 0 THEN C_SUCCESS ELSE C_WARNING END,
+                   l_start_time, p_records_proc => l_processed,
+                   p_records_succ => l_success, p_records_err => l_errors);
+
+  EXCEPTION
+    WHEN OTHERS THEN
+      ROLLBACK;
+      DBMS_OUTPUT.PUT_LINE('✗ СИНХРОНИЗАЦИЯ ПРЕРВАНА: ' || SQLERRM);
+      log_sync_event(l_session_id, 'DEPARTMENTS', 'SYNC_FAILED', 'BULK',
+                     C_ERROR, l_start_time, p_error_msg => SQLERRM);
+      RAISE;
+  END sync_all_departments;
+
+  -- ============================================================================
+  -- ЗАГЛУШКА ДЛЯ СИНХРОНИЗАЦИИ ПОЛЬЗОВАТЕЛЕЙ (СОХРАНЯЕМ СОВМЕСТИМОСТЬ)
+  -- ============================================================================
+  PROCEDURE sync_users_only IS
+    l_session_id VARCHAR2(50);
+  BEGIN
+    l_session_id := generate_session_id();
+    log_sync_event(l_session_id, 'USERS', 'SYNC_SKIPPED', 'BULK',
+                   C_SUCCESS, SYSTIMESTAMP, p_error_msg => 'Users sync not called');
+    DBMS_OUTPUT.PUT_LINE('⚠ Синхронизация пользователей пропущена');
+  END sync_users_only;
+
+END PKG_AD_SYNC;
+/
+
+-- ============================================================================
+-- ШАГ 4: СОЗДАЕМ ПРОСТЫЕ ПРЕДСТАВЛЕНИЯ ДЛЯ ПРОСМОТРА РЕЗУЛЬТАТОВ
+-- ============================================================================
+
+-- Основное представление подразделений
+CREATE OR REPLACE VIEW v_departments_simple AS
+SELECT 
+  department_name as name,
+  display_name,
+  SUBSTR(description_full, 1, 100) as description,
+  ou_level as level,
+  ou_path as hierarchy_path,
+  city_name as city,
+  telephone_number as phone,
+  attribute_count as attrs,
+  TO_CHAR(last_sync_date, 'DD.MM HH24:MI') as last_sync,
+  sync_status
+FROM ad_departments
+WHERE sync_status = 'ACTIVE'
+ORDER BY ou_level, department_name;
+
+-- Иерархическое дерево подразделений  
+CREATE OR REPLACE VIEW v_departments_tree AS
+SELECT 
+  LPAD(' ', NVL(ou_level, 0) * 2, ' ') || department_name as department_tree,
+  ou_level,
+  department_name,
+  city_name,
+  attribute_count
+FROM ad_departments
+WHERE sync_status = 'ACTIVE'
+ORDER BY NVL(ou_level, 0), department_name;
+
+-- ============================================================================
+-- ШАГ 5: ГОТОВЫЕ КОМАНДЫ ДЛЯ ВЫПОЛНЕНИЯ (КОПИРУЙ И ВСТАВЛЯЙ)
+-- ============================================================================
+
+/*
+=== ПОШАГОВЫЕ КОМАНДЫ ДЛЯ ВЫПОЛНЕНИЯ ===
+
+1. СНАЧАЛА НАСТРОЙ КОНФИГУРАЦИЮ в функции get_config():
+   - Замени your-ad-server.domain.local на свой AD сервер
+   - Замени DN пути на свои реальные
+   - Замени SERVICE_PASSWORD на реальный пароль
+
+2. ПРОВЕРЬ КОМПИЛЯЦИЮ ПАКЕТА:
+*/
+
+SELECT object_name, object_type, status 
+FROM user_objects 
+WHERE object_name = 'PKG_AD_SYNC'
+ORDER BY object_type;
+
+-- Результат должен показать STATUS = 'VALID'
+
+/*
+3. ИССЛЕДУЙ ПОДРАЗДЕЛЕНИЯ В СВОЕМ AD:
+*/
+
+BEGIN
+  AD_SYNC_SERVICE.PKG_AD_SYNC.explore_departments_fast;
+END;
+/
+
+/*
+4. ЗАПУСТИ СИНХРОНИЗАЦИЮ ВСЕХ ПОДРАЗДЕЛЕНИЙ:
+*/
+
+BEGIN
+  AD_SYNC_SERVICE.PKG_AD_SYNC.sync_all_departments;
+END;
+/
+
+/*
+5. ПРОВЕРЬ РЕЗУЛЬТАТЫ:
+*/
+
+-- Статистика синхронизации
+SELECT 
+  COUNT(*) as total_departments,
+  COUNT(CASE WHEN sync_status = 'ACTIVE' THEN 1 END) as active,
+  MAX(last_sync_date) as last_sync,
+  AVG(attribute_count) as avg_attributes
+FROM ad_departments;
+
+-- Первые 10 подразделений
+SELECT name, level, hierarchy_path, attrs, last_sync
+FROM v_departments_simple
+WHERE ROWNUM <= 10;
+
+-- Иерархическое дерево (первые 20)
+SELECT department_tree, attribute_count
+FROM v_departments_tree
+WHERE ROWNUM <= 20;
+
+-- Распределение по уровням
+SELECT 
+  ou_level as level,
+  COUNT(*) as departments_count
+FROM ad_departments
+WHERE sync_status = 'ACTIVE'
+GROUP BY ou_level
+ORDER BY ou_level;
+
+-- Логи синхронизации
+SELECT sync_operation, sync_status, records_success, records_error,
+       TO_CHAR(created_date, 'DD.MM HH24:MI:SS') as sync_time
+FROM ad_sync_log
+WHERE sync_type = 'DEPARTMENTS'
+ORDER BY created_date DESC
+FETCH FIRST 3 ROWS ONLY;
+
+/*
+6. ЭКСПОРТ ПОДРАЗДЕЛЕНИЙ В CSV:
+*/
+
+SELECT 
+  '"' || department_name || '",' ||
+  '"' || NVL(display_name, '') || '",' ||
+  '"' || REPLACE(NVL(description_full, ''), '"', '""') || '",' ||
+  '"' || NVL(ou_path, '') || '",' ||
+  NVL(ou_level, 0) || ',' ||
+  '"' || NVL(city_name, '') || '",' ||
+  '"' || NVL(telephone_number, '') || '",' ||
+  attribute_count || ',' ||
+  '"' || TO_CHAR(last_sync_date, 'YYYY-MM-DD HH24:MI:SS') || '"'
+  as csv_row
+FROM ad_departments
+WHERE sync_status = 'ACTIVE'
+ORDER BY ou_level, department_name;
+
+-- ============================================================================
+-- ИТОГОВАЯ ПРОВЕРКА СИСТЕМЫ
+-- ============================================================================
+
+-- Проверяем что всё работает:
+SELECT 'Departments synced: ' || COUNT(*) as status 
+FROM ad_departments WHERE sync_status = 'ACTIVE'
+UNION ALL
+SELECT 'Last sync: ' || TO_CHAR(MAX(last_sync_date), 'DD.MM.YYYY HH24:MI:SS') 
+FROM ad_departments
+UNION ALL  
+SELECT 'Package status: ' || status 
+FROM user_objects WHERE object_name = 'PKG_AD_SYNC' AND object_type = 'PACKAGE BODY'
+UNION ALL
+SELECT 'Average attributes: ' || ROUND(AVG(attribute_count), 1)
+FROM ad_departments WHERE sync_status = 'ACTIVE';
+
+-- ============================================================================
+-- ГОТОВО! СИСТЕМА ВЫГРУЗКИ ПОДРАЗДЕЛЕНИЙ НАСТРОЕНА
+-- ============================================================================
+
+DBMS_OUTPUT.PUT_LINE('====================================================');
+DBMS_OUTPUT.PUT_LINE('СИСТЕМА ВЫГРУЗКИ ПОДРАЗДЕЛЕНИЙ ГОТОВА!');
+DBMS_OUTPUT.PUT_LINE('====================================================');
+DBMS_OUTPUT.PUT_LINE('1. Настрой конфигурацию в get_config()');
+DBMS_OUTPUT.PUT_LINE('2. Запусти: explore_departments_fast');
+DBMS_OUTPUT.PUT_LINE('3. Запусти: sync_all_departments');  
+DBMS_OUTPUT.PUT_LINE('4. Проверь: SELECT * FROM v_departments_simple');
+DBMS_OUTPUT.PUT_LINE('====================================================');
